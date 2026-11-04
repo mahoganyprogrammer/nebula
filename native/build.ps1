@@ -15,7 +15,11 @@ $vcvars = Join-Path $vs "VC\Auxiliary\Build\vcvars64.bat"
 $cmake = Join-Path $vs "Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
 $ninja = (Get-Command ninja -ErrorAction Stop).Source
 # CMake reads these into its own files: forward slashes.
-$llvm = "C:/Program Files/LLVM/bin"
+$llvm = Join-Path $vs "VC\Tools\Llvm\x64\bin"
+if (-not (Test-Path (Join-Path $llvm "clang++.exe"))) {
+    $llvm = "C:/Program Files/LLVM/bin"   # fallback to standalone install
+}
+$llvm = $llvm.Replace("\", "/")
 $src = $PSScriptRoot.Replace("\", "/")
 $Petari = $Petari.Replace("\", "/")
 $Build = $Build.Replace("\", "/")
