@@ -86,10 +86,14 @@ jobs:
       - name: Configure host
         shell: pwsh
         run: |
-              $clang = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\x64\bin\clang.exe"
-              $clangxx = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\x64\bin\clang++.exe"
-               cmake -S . -B build\host -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER="$clang" -DCMAKE_CXX_COMPILER="$clangxx"
-
+          $clang = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\x64\bin\clang.exe"
+          $clangxx = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\x64\bin\clang++.exe"
+          cmake -S . -B build\host -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_C_COMPILER="$clang" `
+            -DCMAKE_CXX_COMPILER="$clangxx" `
+            -DNEBULA_VULKAN=${{ matrix.config.vulkan }} `
+            -DNEBULA_FSR3=${{ matrix.config.fsr3 }}
       - name: Build host (NebulaNative)
         run: cmake --build build\host --target NebulaNative --config Release
 
