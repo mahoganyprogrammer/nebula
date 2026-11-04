@@ -10,37 +10,40 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  # Pinned tool versions matching the docs
   LLVM_VERSION: '19.1.7'
   CMAKE_VERSION: '3.30.5'
   NINJA_VERSION: '1.12.1'
-  RUST_VERSION: 'stable'
   DOTNET_VERSION: '8.0.x'
 
 jobs:
   build:
-    name: Build1 (${{ matrix.config }})
+    name: Build (${{ matrix.config.name }})
     runs-on: windows-2022
     strategy:
       fail-fast: false
       matrix:
         config:
-          - name: default
-            vulkan: 'ON'
+          - name: d3d12
+            vulkan: 'OFF'
             fsr3: 'OFF'
           - name: vulkan
-            vulkan: 'OFF'
+            vulkan: 'ON'
             fsr3: 'OFF'
-          - name: no-fsr3
+          - name: d3d12-fsr3
             vulkan: 'OFF'
-            fsr3: 'OFF'
+            fsr3: 'ON'
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 0
+          fetch-depth: 1
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -65,9 +68,9 @@ jobs:
           Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\llvm.exe"
           Start-Process -FilePath "$env:RUNNER_TEMP\llvm.exe" `
             -ArgumentList "/S","/D=C:\Program Files\LLVM" -Wait
-          # Add to PATH for subsequent steps
           "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           & "C:\Program Files\LLVM\bin\clang.exe" --version
+
       - name: Set up CMake
         uses: jwlawson/actions-setup-cmake@v2
         with:
@@ -81,34 +84,24 @@ jobs:
       - name: Cache CMake dependencies
         uses: actions/cache@v4
         with:
-          path: |
-            build/host/_deps
-            build/host/CMakeCache.txt
+          path: build/host/_deps
           key: cmake-deps-${{ matrix.config.name }}-${{ hashFiles('CMakeLists.txt', '**/*.cmake') }}
           restore-keys: |
             cmake-deps-${{ matrix.config.name }}-
-      - name: Enter MSVC environment
-        shell: pwsh
-        run: |
-          # The script is dot-sourced so that env vars persist in this shell;
-          # we also persist them across steps via GITHUB_ENV.
-          . .\tools\enter_msvc_environment.ps1
-          # Persist relevant MSVC vars for subsequent steps
-          Get-ChildItem Env: | Where-Object {
-            $_.Name -match '^(INCLUDE|LIB|LIBPATH|PATH|VCINSTALLDIR|VCToolsInstallDir|WindowsSdkDir|UCRTVersion|VCToolsVersion)$'
-          } | ForEach-Object {
-            "$($_.Name)=$($_.Value)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          }
+
       - name: Build game files (nebula-import)
-        run: |
-          cargo build --release --locked -p nebula-import
+        run: cargo build --release --locked -p nebula-import
+
       - name: Configure host
         shell: pwsh
         run: |
           cmake -S . -B build\host -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
-            -DNEBULA_VULKAN=${{ matrix.config.vulkan == 'ON' && 'ON' || 'OFF' }} `
-            -DNEBULA_FSR3=${{ matrix.config.fsr3 == 'ON' && 'ON' || 'OFF' }}
+            -DCMAKE_C_COMPILER="C:/Program Files/LLVM/bin/clang.exe" `
+            -DCMAKE_CXX_COMPILER="C:/Program Files/LLVM/bin/clang++.exe" `
+            -DNEBULA_VULKAN=${{ matrix.config.vulkan }} `
+            -DNEBULA_FSR3=${{ matrix.config.fsr3 }}
+
       - name: Build host (NebulaNative)
         run: cmake --build build\host --target NebulaNative --config Release
 
@@ -118,40 +111,45 @@ jobs:
 
       - name: Build game module (smg_game.dll)
         shell: pwsh
-        run: |
-          .\native\build.ps1 -Petari native\petari -Build build\game
+        run: .\native\build.ps1 -Petari native\petari -Build build\game
+
       - name: Build Setup and launcher (.NET)
         shell: pwsh
         run: |
-          # Adjust the project paths to match your repository layout.
-          $projFiles = @()
-          if (Test-Path "setup\Setup.csproj") { $projFiles += "setup\Setup.csproj" }
-          if (Test-Path "launcher\Launcher.csproj") { $projFiles += "launcher\Launcher.csproj" }
-          foreach ($proj in $projFiles) {
-            Write-Host "Building $proj"
-            dotnet build $proj -c Release
+          $projects = @("setup\Setup.csproj", "launcher\Launcher.csproj")
+          $found = $projects | Where-Object { Test-Path $_ }
+          if (-not $found) {
+            Write-Host "No Setup/launcher .csproj found; skipping (edit this step if they live elsewhere)."
+          } else {
+            foreach ($proj in $found) {
+              Write-Host "Building $proj"
+              dotnet build $proj -c Release
+              if ($LASTEXITCODE -ne 0) { throw "dotnet build $proj failed" }
+            }
           }
+
       - name: Assemble runtime folder
         shell: pwsh
         run: |
           $out = "build\dist-${{ matrix.config.name }}"
           New-Item -ItemType Directory -Force -Path $out | Out-Null
-          Copy-Item build\host\NebulaNative.exe $out
+
+          Copy-Item build\host\NebulaNative.exe $out -ErrorAction Stop
           if (Test-Path build\host\NebulaNativeVk.exe) {
             Copy-Item build\host\NebulaNativeVk.exe $out
           }
-          Copy-Item build\game\smg_game.dll $out
-          Copy-Item target\release\nebula-import.exe $out
-          # Copy any DLSS Streamline vendor libs if present
+          Copy-Item build\game\smg_game.dll $out -ErrorAction Stop
+          Copy-Item target\release\nebula-import.exe $out -ErrorAction Stop
+
           if (Test-Path "vendor") {
             Copy-Item -Recurse vendor $out
           }
-          # Copy Setup / launcher outputs
           Get-ChildItem -Recurse -Filter "*.exe" -Path setup,launcher -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -match '\\bin\\Release\\' } |
             ForEach-Object { Copy-Item $_.FullName $out }
-          # Sanity check
+
           Get-ChildItem $out | Format-Table Name, Length
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -185,6 +183,7 @@ jobs:
             Write-Host "Created $zip"
           }
           Get-ChildItem release
+
       - name: Upload release archives
         uses: actions/upload-artifact@v4
         with:
@@ -205,23 +204,16 @@ jobs:
     runs-on: windows-2022
     needs: build
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download default artifact
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: nebula-default-${{ github.sha }}
           path: dist
 
-      - name: Verify identify help
+      - name: Verify nebula-import runs
         shell: pwsh
         run: |
-          if (-not (Test-Path dist\nebula-import.exe)) {
-            throw "nebula-import.exe missing from artifact"
-          }
-          # `identify` requires a disc image; just verify the tool loads.
-          & .\dist\nebula-import.exe --help
-          if ($LASTEXITCODE -ne 0) {
-            throw "nebula-import --help exited with $LASTEXITCODE"
-          }
+          $exe = Get-ChildItem -Path dist -Recurse -Filter nebula-import.exe |
+                 Select-Object -First 1
+          if (-not $exe) { throw "nebula-import.exe missing from artifacts" }
+          & $exe.FullName --help
+          if ($LASTEXITCODE -ne 0) { throw "nebula-import --help exited with $LASTEXITCODE" }
