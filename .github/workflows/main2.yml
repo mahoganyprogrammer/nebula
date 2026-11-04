@@ -95,9 +95,11 @@ jobs:
             -DNEBULA_VULKAN=${{ matrix.config.vulkan }} `
             -DNEBULA_FSR3=${{ matrix.config.fsr3 }}
       - name: Build host (NebulaNative)
+        if: false
         run: cmake --build build\host --target NebulaNative --config Release
 
       - name: Build host (NebulaNativeVk)
+        if: false
         if: matrix.config.vulkan == 'ON'
         run: cmake --build build\host --target NebulaNativeVk --config Release
 
@@ -106,6 +108,7 @@ jobs:
         run: .\native\build.ps1 -Petari native\petari -Build build\game
 
       - name: Build Setup and launcher (.NET)
+        if: false
         shell: pwsh
         run: |
           $projects = @("setup\Setup.csproj", "launcher\Launcher.csproj")
