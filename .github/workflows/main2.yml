@@ -123,6 +123,7 @@ jobs:
           }
 
       - name: Assemble runtime folder
+        if: false
         shell: pwsh
         run: |
           $out = "build\dist-${{ matrix.config.name }}"
@@ -147,8 +148,8 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: nebula-${{ matrix.config.name }}-${{ github.sha }}
-          path: build/dist-${{ matrix.config.name }}
+          name: nebula-build-${{ matrix.config.name }}-${{ github.sha }}
+          path: build
           if-no-files-found: error
           retention-days: 30
 
