@@ -60,16 +60,7 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Set up LLVM
-        shell: pwsh
-        run: |
-          $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$env:LLVM_VERSION/LLVM-$env:LLVM_VERSION-win64.exe"
-          Write-Host "Downloading LLVM from $url"
-          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\llvm.exe"
-          Start-Process -FilePath "$env:RUNNER_TEMP\llvm.exe" `
-            -ArgumentList "/S","/D=C:\Program Files\LLVM" -Wait
-          "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          & "C:\Program Files\LLVM\bin\clang.exe" --version
+      
 
       - name: Set up CMake
         uses: jwlawson/actions-setup-cmake@v2
@@ -95,12 +86,9 @@ jobs:
       - name: Configure host
         shell: pwsh
         run: |
-          cmake -S . -B build\host -G Ninja `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_C_COMPILER="C:/Program Files/LLVM/bin/clang.exe" `
-            -DCMAKE_CXX_COMPILER="C:/Program Files/LLVM/bin/clang++.exe" `
-            -DNEBULA_VULKAN=${{ matrix.config.vulkan }} `
-            -DNEBULA_FSR3=${{ matrix.config.fsr3 }}
+              clang = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\x64\bin\clang.exe"
+              $clangxx = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\x64\bin\clang++.exe"
+               cmake -S . -B build\host -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER="$clang" -DCMAKE_CXX_COMPILER="$clangxx"
 
       - name: Build host (NebulaNative)
         run: cmake --build build\host --target NebulaNative --config Release
