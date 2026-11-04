@@ -86,7 +86,7 @@ jobs:
       - name: Configure host
         shell: pwsh
         run: |
-              clang = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\x64\bin\clang.exe"
+              $clang = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\x64\bin\clang.exe"
               $clangxx = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\x64\bin\clang++.exe"
                cmake -S . -B build\host -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER="$clang" -DCMAKE_CXX_COMPILER="$clangxx"
 
