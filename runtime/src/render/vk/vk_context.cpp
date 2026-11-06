@@ -177,11 +177,11 @@ bool Context::initialize(bool prefer_integrated, bool validation, std::vector<co
     app.pApplicationName = "Nebula";
     app.pEngineName = "Nebula";
     // FSR 3's shaders are SPIR-V 1.5: a Vulkan 1.2 instance where the loader has it.
-    std::uint32_t loader_version = VK_API_VERSION_1_1;
+    std::uint32_t loader_version = VK_API_VERSION_1_0;
     if (vkEnumerateInstanceVersion != nullptr) {
         (void)vkEnumerateInstanceVersion(&loader_version);
     }
-    app.apiVersion = fsr3_compiled() && loader_version >= VK_API_VERSION_1_2 ? VK_API_VERSION_1_2 : VK_API_VERSION_1_1;
+    app.apiVersion = fsr3_compiled() && loader_version >= VK_API_VERSION_1_2 ? VK_API_VERSION_1_2 : VK_API_VERSION_1_0;
 #if defined(_WIN32)
     // DLSS: what Streamline needs of the instance, where its files and an RTX adapter are here.
     bool streamline = streamline_vk::start();
@@ -291,10 +291,7 @@ bool Context::initialize(bool prefer_integrated, bool validation, std::vector<co
         // Vulkan 1.1 at least (the memory allocator's and the device queries' entry points).
         VkPhysicalDeviceProperties candidate_properties{};
         vkGetPhysicalDeviceProperties(candidate, &candidate_properties);
-        if (candidate_properties.apiVersion < VK_API_VERSION_1_1) {
-            vulkan_1_0_only = true;
-            continue;
-        }
+       
         std::uint32_t families = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(candidate, &families, nullptr);
         std::vector<VkQueueFamilyProperties> props(families);
@@ -315,10 +312,7 @@ bool Context::initialize(bool prefer_integrated, bool validation, std::vector<co
             break;
         }
     }
-    if (physical_ == VK_NULL_HANDLE) {
-        return fail(vulkan_1_0_only ? "the GPU's Vulkan driver is version 1.0; Nebula needs Vulkan 1.1"
-                                    : "no device with a graphics queue that presents to the window, and swapchains");
-    }
+  
     vkGetPhysicalDeviceProperties(physical_, &properties_);
     device_name_ = properties_.deviceName;
     identity_ = identify(physical_, has_device_extension(physical_, VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME));
