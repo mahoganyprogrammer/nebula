@@ -99,7 +99,7 @@ jobs:
         run: cmake --build build\host --target NebulaNative --config Release
 
       - name: Build host (NebulaNativeVk)
-        if: ${{ matrix.config.vulkan == 'ON' && false }} 
+        if: ${{ matrix.config.vulkan == 'ON' }} 
         run: cmake --build build\host --target NebulaNativeVk --config Release
 
       - name: Build game module (smg_game.dll)
