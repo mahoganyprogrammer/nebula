@@ -103,11 +103,11 @@ jobs:
         run: cmake --build build\host --target NebulaNativeVk --config Release
 
       - name: Build game module (smg_game.dll)
+        if: false 
         shell: pwsh
         run: .\native\build.ps1 -Petari native\petari -Build build\game
 
       - name: Build Setup and launcher (.NET)
-        if: false
         shell: pwsh
         run: |
           $projects = @("setup\Setup.csproj", "launcher\Launcher.csproj")
