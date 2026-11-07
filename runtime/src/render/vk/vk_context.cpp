@@ -167,8 +167,6 @@ bool Context::initialize(bool prefer_integrated, bool validation, std::vector<co
     if (validation && has_layer("VK_LAYER_KHRONOS_validation")) {
         layers.push_back("VK_LAYER_KHRONOS_validation");
     }
-    // Object names and the validation messages only with the validation layer: a name is a driver call per object,
-    // and the Android emulator's driver crashes on them.
     const bool debug_utils = !layers.empty() && has_instance_extension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     if (debug_utils) {
         instance_extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
@@ -176,51 +174,8 @@ bool Context::initialize(bool prefer_integrated, bool validation, std::vector<co
     VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
     app.pApplicationName = "Nebula";
     app.pEngineName = "Nebula";
-    // FSR 3's shaders are SPIR-V 1.5: a Vulkan 1.2 instance where the loader has it.
-    std::uint32_t loader_version = VK_API_VERSION_1_0;
-    if (vkEnumerateInstanceVersion != nullptr) {
-        (void)vkEnumerateInstanceVersion(&loader_version);
-    }
-    app.apiVersion = fsr3_compiled() && loader_version >= VK_API_VERSION_1_2 ? VK_API_VERSION_1_2 : VK_API_VERSION_1_0;
-#if defined(_WIN32)
-    // DLSS: what Streamline needs of the instance, where its files and an RTX adapter are here.
-    bool streamline = streamline_vk::start();
-    if (streamline) {
-        for (const char* name : streamline_vk::needs().instance_extensions) {
-            streamline = streamline && has_instance_extension(name);
-        }
-    }
-    if (streamline) {
-        for (const char* name : streamline_vk::needs().instance_extensions) {
-            if (std::none_of(instance_extensions.begin(), instance_extensions.end(),
-                             [&](const char* have) { return std::strcmp(have, name) == 0; })) {
-                instance_extensions.push_back(name);
-            }
-        }
-        // Frame generation's features are Vulkan 1.3's.
-        app.apiVersion = std::max(app.apiVersion, streamline_vk::needs().frame_generation && loader_version >= VK_API_VERSION_1_3
-                                                      ? VK_API_VERSION_1_3
-                                                      : VK_API_VERSION_1_2);
-    }
-#endif
-#if defined(_WIN32)
-    // XeSS's instance needs, where its library is here.
-    if (const auto required = xess_library::get<decltype(xessVKGetRequiredInstanceExtensions)>("xessVKGetRequiredInstanceExtensions")) {
-        std::uint32_t count = 0u;
-        const char* const* names = nullptr;
-        std::uint32_t version = 0u;
-        if (required(&count, &names, &version) == XESS_RESULT_SUCCESS) {
-            for (std::uint32_t i = 0u; i < count; ++i) {
-                if (std::none_of(instance_extensions.begin(), instance_extensions.end(),
-                                 [&](const char* have) { return std::strcmp(have, names[i]) == 0; })) {
-                    instance_extensions.push_back(names[i]);
-                }
-            }
-            app.apiVersion = std::max(app.apiVersion, version);
-            xess_instance_ready_ = true;
-        }
-    }
-#endif
+    // Vulkan 1.0 only: no FSR3, Streamline or XeSS instance version bumps.
+    app.apiVersion = VK_API_VERSION_1_0;
     VkInstanceCreateInfo instance_info{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
     instance_info.pApplicationInfo = &app;
     instance_info.enabledExtensionCount = static_cast<std::uint32_t>(instance_extensions.size());
@@ -243,7 +198,6 @@ bool Context::initialize(bool prefer_integrated, bool validation, std::vector<co
     }
     debug_names_ = debug_utils;
     VkSurfaceKHR window_surface = VK_NULL_HANDLE;
-    // Every failure from here leaves no instance, device or surface behind.
     const auto fail = [&](const char* message) {
         std::fprintf(stderr, "[vulkan] %s\n", message);
         failure_ = message;
@@ -269,8 +223,6 @@ bool Context::initialize(bool prefer_integrated, bool validation, std::vector<co
         }
     }
 
-    // The first device of the preferred kind with a graphics queue (that presents to the surface) and the swapchain
-    // extension.
     std::uint32_t count = 0;
     vkEnumeratePhysicalDevices(instance_, &count, nullptr);
     std::vector<VkPhysicalDevice> devices(count);
@@ -283,15 +235,10 @@ bool Context::initialize(bool prefer_integrated, bool validation, std::vector<co
         vkGetPhysicalDeviceProperties(b, &pb);
         return (pa.deviceType == wanted) > (pb.deviceType == wanted);
     });
-    bool vulkan_1_0_only = false;
     for (const VkPhysicalDevice candidate : devices) {
         if (!has_device_extension(candidate, VK_KHR_SWAPCHAIN_EXTENSION_NAME)) {
             continue;
         }
-        // Vulkan 1.1 at least (the memory allocator's and the device queries' entry points).
-        VkPhysicalDeviceProperties candidate_properties{};
-        vkGetPhysicalDeviceProperties(candidate, &candidate_properties);
-       
         std::uint32_t families = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(candidate, &families, nullptr);
         std::vector<VkQueueFamilyProperties> props(families);
@@ -312,15 +259,13 @@ bool Context::initialize(bool prefer_integrated, bool validation, std::vector<co
             break;
         }
     }
-  
+
     vkGetPhysicalDeviceProperties(physical_, &properties_);
     device_name_ = properties_.deviceName;
     identity_ = identify(physical_, has_device_extension(physical_, VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME));
     quirks_ = quirks_for(identity_);
     VkPhysicalDeviceFeatures available{};
     vkGetPhysicalDeviceFeatures(physical_, &available);
-    // GALAXY_VK_TEST_NO_FEATURE=<names, comma-separated>: this GPU acts without those features, as a phone's may, so
-    // the paths for it run on any GPU.
     if (const char* const names = ::galaxy::run_options().vk_test_no_feature) {
         const std::string list = std::string(",") + names + ",";
         const auto off = [&list](const char* name) { return list.find(std::string(",") + name + ",") != std::string::npos; };
@@ -356,94 +301,23 @@ bool Context::initialize(bool prefer_integrated, bool validation, std::vector<co
     queue_info.queueCount = 1;
     queue_info.pQueuePriorities = &priority;
     std::vector<const char*> device_extensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME};
-    // On a Vulkan 1.2 instance and device one chain carries every promoted feature: the separate structures must not
-    // appear beside it.
-    const bool core_12 = app.apiVersion >= VK_API_VERSION_1_2 && properties_.apiVersion >= VK_API_VERSION_1_2;
-    VkPhysicalDeviceVulkan11Features features11{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
-    VkPhysicalDeviceVulkan12Features features12{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
-    VkPhysicalDeviceVulkan13Features features13{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
-    VkPhysicalDeviceOpticalFlowFeaturesNV optical_flow{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_OPTICAL_FLOW_FEATURES_NV};
     std::vector<float> queue_priorities(1u, priority);
     VkDeviceQueueCreateInfo queue_infos[2]{};
     std::uint32_t queue_info_count = 1u;
-    bool generation_device = false;
-    std::uint32_t optical_flow_family = UINT32_MAX;
-#if defined(_WIN32)
-    const bool dlss_device = streamline && core_12 && streamline_vk::device_meets_needs(physical_);
-    if (dlss_device) {
-        const streamline_vk::Needs& needs = streamline_vk::needs();
-        for (const char* name : needs.device_extensions) {
-            device_extensions.push_back(name);
-        }
-        features12 = needs.features12;
-        std::uint32_t families = 0u;
-        vkGetPhysicalDeviceQueueFamilyProperties(physical_, &families, nullptr);
-        std::vector<VkQueueFamilyProperties> props(families);
-        vkGetPhysicalDeviceQueueFamilyProperties(physical_, &families, props.data());
-        std::uint32_t extra = needs.graphics_queues + needs.compute_queues;
-        // Frame generation on a Vulkan 1.3 instance and device that give all it asks.
-        const std::uint32_t generation_extra = needs.generation_graphics_queues + needs.generation_compute_queues;
-        if (app.apiVersion >= VK_API_VERSION_1_3 && 1u + generation_extra <= props[queue_family_].queueCount &&
-            streamline_vk::device_meets_generation_needs(physical_, optical_flow_family)) {
-            generation_device = true;
-            extra = generation_extra;
-            for (const char* name : needs.generation_extensions) {
-                device_extensions.push_back(name);
-            }
-            features13.synchronization2 = VK_TRUE;
-            VkPhysicalDeviceVulkan13Features have13{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
-            VkPhysicalDeviceFeatures2 features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
-            features.pNext = &have13;
-            vkGetPhysicalDeviceFeatures2(physical_, &features);
-            features13.maintenance4 = have13.maintenance4;
-            optical_flow.opticalFlow = optical_flow_family != UINT32_MAX ? VK_TRUE : VK_FALSE;
-        }
-        if (1u + extra <= props[queue_family_].queueCount) {
-            queue_priorities.assign(1u + extra, priority);
-            queue_info.queueCount = 1u + extra;
-            queue_info.pQueuePriorities = queue_priorities.data();
-        }
-    }
-#endif
-    // FSR 3 frame generation's acquiring and presenting queues, last in the family.
-    std::uint32_t generation_queues_at = 0u;
-    if (fsr_frame_generation_compiled()) {
-        std::uint32_t families = 0u;
-        vkGetPhysicalDeviceQueueFamilyProperties(physical_, &families, nullptr);
-        std::vector<VkQueueFamilyProperties> props(families);
-        vkGetPhysicalDeviceQueueFamilyProperties(physical_, &families, props.data());
-        if (queue_info.queueCount + 2u <= props[queue_family_].queueCount) {
-            generation_queues_at = queue_info.queueCount;
-            queue_priorities.assign(queue_info.queueCount + 2u, priority);
-            queue_info.queueCount += 2u;
-            queue_info.pQueuePriorities = queue_priorities.data();
-        }
-    }
     queue_infos[0] = queue_info;
-    if (optical_flow_family != UINT32_MAX) {
-        queue_infos[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        queue_infos[1].queueFamilyIndex = optical_flow_family;
-        queue_infos[1].queueCount = 1u;
-        queue_infos[1].pQueuePriorities = &priority;
-        queue_info_count = 2u;
-    }
-    // A device that is a portability subset (MoltenVK) must have it enabled; Nebula uses nothing it leaves out.
+
+    // A device that is a portability subset (MoltenVK) must have it enabled.
     if (has_device_extension(physical_, "VK_KHR_portability_subset")) {
         device_extensions.push_back("VK_KHR_portability_subset");
     }
-    // Presents at a requested display time (Android's swapchain implements it for every driver): the frame pacing of
-    // RendererVk::end_frame.
     display_timing_ = has_device_extension(physical_, VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME);
     if (display_timing_) {
         device_extensions.push_back(VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME);
     }
-    // The driver's per-heap budget (the internal-resolution memory check), where it reports one.
     memory_budget_ = has_device_extension(physical_, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
     if (memory_budget_) {
         device_extensions.push_back(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
     }
-    // Depth clipping apart from depth clamping: with both, fragment depth (shader-written too) is clamped to the
-    // viewport's range while primitives are still clipped, as D3D does.
     VkPhysicalDeviceDepthClipEnableFeaturesEXT depth_clip{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_CLIP_ENABLE_FEATURES_EXT};
     if (available.depthClamp == VK_TRUE && has_device_extension(physical_, VK_EXT_DEPTH_CLIP_ENABLE_EXTENSION_NAME)) {
         VkPhysicalDeviceFeatures2 features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
@@ -454,36 +328,8 @@ bool Context::initialize(bool prefer_integrated, bool validation, std::vector<co
             device_extensions.push_back(VK_EXT_DEPTH_CLIP_ENABLE_EXTENSION_NAME);
         }
     }
-    // FSR 3 (temporal_upscaler_vk.cpp): half floats, 16-bit storage and its compute shaders' subgroup sizes, and a depth
-    // aspect read while the stencil aspect stays an attachment (its barriers name the depth alone).
-    VkPhysicalDeviceShaderFloat16Int8Features float16{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES};
-    VkPhysicalDevice16BitStorageFeatures storage16{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES};
-    VkPhysicalDeviceSubgroupSizeControlFeaturesEXT subgroup{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES_EXT};
-    VkPhysicalDeviceSeparateDepthStencilLayoutsFeaturesKHR separate{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SEPARATE_DEPTH_STENCIL_LAYOUTS_FEATURES_KHR};
-    if (fsr3_compiled() && core_12 && has_device_extension(physical_, VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME) &&
-        has_device_extension(physical_, VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME) &&
-        has_device_extension(physical_, VK_KHR_SEPARATE_DEPTH_STENCIL_LAYOUTS_EXTENSION_NAME) &&
-        has_device_extension(physical_, VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME) &&
-        available.independentBlend == VK_TRUE && available.shaderStorageImageWriteWithoutFormat == VK_TRUE &&
-        available.shaderStorageImageExtendedFormats == VK_TRUE) {
-        float16.pNext = &storage16;
-        storage16.pNext = &subgroup;
-        subgroup.pNext = &separate;
-        VkPhysicalDeviceFeatures2 features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
-        features.pNext = &float16;
-        vkGetPhysicalDeviceFeatures2(physical_, &features);
-        temporal_upscaling_ = float16.shaderFloat16 == VK_TRUE && storage16.storageBuffer16BitAccess == VK_TRUE &&
-                              subgroup.subgroupSizeControl == VK_TRUE && subgroup.computeFullSubgroups == VK_TRUE &&
-                              separate.separateDepthStencilLayouts == VK_TRUE;
-        if (temporal_upscaling_) {
-            device_extensions.push_back(VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME);
-            device_extensions.push_back(VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME);
-            device_extensions.push_back(VK_KHR_SEPARATE_DEPTH_STENCIL_LAYOUTS_EXTENSION_NAME);
-            device_extensions.push_back(VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME);
-            enabled.shaderStorageImageWriteWithoutFormat = VK_TRUE;
-            enabled.shaderStorageImageExtendedFormats = VK_TRUE;
-        }
-    }
+    // Temporal upscaling (FSR3) needs 1.1+ extensions; not available on a 1.0 device.
+    temporal_upscaling_ = false;
     depth_clamp_ = available.depthClamp == VK_TRUE;
     VkDeviceCreateInfo device_info{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
     if (depth_clip_enable_) {
@@ -491,65 +337,11 @@ bool Context::initialize(bool prefer_integrated, bool validation, std::vector<co
         depth_clip.depthClipEnable = VK_TRUE;
         device_info.pNext = &depth_clip;
     }
-    if (core_12) {
-        if (temporal_upscaling_) {
-            features11.storageBuffer16BitAccess = VK_TRUE;
-            features12.shaderFloat16 = VK_TRUE;
-            features12.separateDepthStencilLayouts = VK_TRUE;
-            if (generation_device) {
-                // On a 1.3 chain the subgroup features are its own: the separate structure must not appear beside it.
-                features13.subgroupSizeControl = subgroup.subgroupSizeControl;
-                features13.computeFullSubgroups = subgroup.computeFullSubgroups;
-            } else {
-                subgroup.pNext = const_cast<void*>(device_info.pNext);
-                device_info.pNext = &subgroup;
-            }
-        }
-        if (generation_device) {
-            optical_flow.pNext = const_cast<void*>(device_info.pNext);
-            features13.pNext = &optical_flow;
-            device_info.pNext = &features13;
-        }
-        features12.pNext = const_cast<void*>(device_info.pNext);
-        features11.pNext = &features12;
-        device_info.pNext = &features11;
-    }
-#if defined(_WIN32)
-    // XeSS's device needs, where its library is here: its features through the chain (its function adds to it).
-    VkPhysicalDeviceFeatures2 enabled_chain{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
-    const auto xess_extensions = xess_library::get<decltype(xessVKGetRequiredDeviceExtensions)>("xessVKGetRequiredDeviceExtensions");
-    const auto xess_features = xess_library::get<decltype(xessVKGetRequiredDeviceFeatures)>("xessVKGetRequiredDeviceFeatures");
-    if (xess_instance_ready_ && xess_extensions != nullptr && xess_features != nullptr) {
-        std::uint32_t count = 0u;
-        const char* const* names = nullptr;
-        bool have_all = xess_extensions(instance_, physical_, &count, &names) == XESS_RESULT_SUCCESS;
-        for (std::uint32_t i = 0u; have_all && i < count; ++i) {
-            have_all = has_device_extension(physical_, names[i]);
-        }
-        if (have_all && available.shaderStorageImageWriteWithoutFormat == VK_TRUE) {
-            enabled.shaderStorageImageWriteWithoutFormat = VK_TRUE;
-            enabled_chain.features = enabled;
-            enabled_chain.pNext = const_cast<void*>(device_info.pNext);
-            void* chain = &enabled_chain;
-            if (xess_features(instance_, physical_, &chain) == XESS_RESULT_SUCCESS) {
-                for (std::uint32_t i = 0u; i < count; ++i) {
-                    if (std::none_of(device_extensions.begin(), device_extensions.end(),
-                                     [&](const char* have) { return std::strcmp(have, names[i]) == 0; })) {
-                        device_extensions.push_back(names[i]);
-                    }
-                }
-                device_info.pNext = chain;
-                xess_upscaling_ = true;
-            }
-        }
-    }
-#endif
     device_info.queueCreateInfoCount = queue_info_count;
-    queue_infos[0] = queue_info;
     device_info.pQueueCreateInfos = queue_infos;
     device_info.enabledExtensionCount = static_cast<std::uint32_t>(device_extensions.size());
     device_info.ppEnabledExtensionNames = device_extensions.data();
-    device_info.pEnabledFeatures = xess_upscaling_ ? nullptr : &enabled;
+    device_info.pEnabledFeatures = &enabled;
     std::sort(device_extensions.begin(), device_extensions.end(), [](const char* a, const char* b) { return std::strcmp(a, b) < 0; });
     device_extensions.erase(std::unique(device_extensions.begin(), device_extensions.end(),
                                         [](const char* a, const char* b) { return std::strcmp(a, b) == 0; }),
@@ -563,33 +355,12 @@ bool Context::initialize(bool prefer_integrated, bool validation, std::vector<co
     }
     volkLoadDevice(device_);
     vkGetDeviceQueue(device_, queue_family_, 0, &queue_);
-    if (generation_queues_at != 0u) {
-        vkGetDeviceQueue(device_, queue_family_, generation_queues_at, &generation_present_queue_);
-        vkGetDeviceQueue(device_, queue_family_, generation_queues_at + 1u, &generation_acquire_queue_);
-    }
-#if defined(_WIN32)
-    if (dlss_device) {
-        (void)streamline_vk::attach(instance_, physical_, device_, queue_family_, 1u, generation_device, optical_flow_family);
-        // The surface again, through Streamline: it finds the window from it. The window and its queue support stay the same.
-        if (generation_device && create_surface && window_surface != VK_NULL_HANDLE) {
-            streamline_vk::hook_surface_calls(instance_);
-            vkDestroySurfaceKHR(instance_, window_surface, nullptr);
-            window_surface = create_surface(instance_);
-            if (surface != nullptr) {
-                *surface = window_surface;
-            }
-            if (window_surface == VK_NULL_HANDLE) {
-                return fail("the window's surface could not be created");
-            }
-        }
-    }
-#endif
 
     VmaVulkanFunctions functions{};
     functions.vkGetInstanceProcAddr = vkGetInstanceProcAddr;
     functions.vkGetDeviceProcAddr = vkGetDeviceProcAddr;
     VmaAllocatorCreateInfo allocator_info{};
-    allocator_info.vulkanApiVersion = VK_API_VERSION_1_1;
+    allocator_info.vulkanApiVersion = VK_API_VERSION_1_0;
     allocator_info.physicalDevice = physical_;
     allocator_info.device = device_;
     allocator_info.instance = instance_;
@@ -611,8 +382,6 @@ bool Context::initialize(bool prefer_integrated, bool validation, std::vector<co
                  "anisotropy=%d display-timing=%d\n",
                  dual_source_blend_, logic_op_, geometry_shader_, depth_clamp_, depth_clip_enable_, bc_textures_,
                  sampler_anisotropy_, display_timing_);
-    // The memory BufferPlace chooses from: each heap's size (L: device-local), each type's heap and flags (L device
-    // local, V host visible, C coherent, $ cached).
     {
         VkPhysicalDeviceMemoryProperties memory{};
         vkGetPhysicalDeviceMemoryProperties(physical_, &memory);
@@ -639,9 +408,6 @@ void Context::shutdown() noexcept {
     if (device_ != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(device_);
     }
-#if defined(_WIN32)
-    streamline_vk::shutdown();
-#endif
     {
         std::lock_guard<std::mutex> lock(deferred_mutex_);
         for (Deferred& deferred : deferred_) {
@@ -684,7 +450,6 @@ std::uint64_t Context::submit(std::span<const VkCommandBuffer> commands, VkSemap
                               VkPipelineStageFlags wait_stage, VkSemaphore signal_semaphore) {
     std::lock_guard<std::mutex> lock(submit_mutex_);
     VkFence fence = VK_NULL_HANDLE;
-    // A free fence may still be in a wait() that read it before it signalled; reset none while one is.
     if (!free_fences_.empty() && waiters_ == 0) {
         fence = free_fences_.back();
         free_fences_.pop_back();
@@ -746,7 +511,7 @@ bool Context::wait(std::uint64_t value, std::uint64_t timeout_ns) {
             }
         }
         if (fence == VK_NULL_HANDLE) {
-            return false;  // never submitted
+            return false;
         }
         ++waiters_;
     }
@@ -777,8 +542,6 @@ std::uint64_t Context::submit_frame(std::span<const VkCommandBuffer> commands, V
 }
 
 void Context::defer(std::function<void()> destroy) {
-    // Commands recorded into the open frame may name the object: it waits for that frame's submission (a peek or
-    // one-time submission in between carries none of them).
     std::lock_guard<std::mutex> lock(deferred_mutex_);
     deferred_.push_back({0u, std::move(destroy)});
 }
@@ -917,7 +680,6 @@ bool Context::device_memory_budget(std::uint64_t& usage, std::uint64_t& budget) 
     vkGetPhysicalDeviceMemoryProperties(physical_, &memory);
     std::array<VmaBudget, VK_MAX_MEMORY_HEAPS> budgets{};
     vmaGetHeapBudgets(allocator_, budgets.data());
-    // The largest device-local heap holds the render targets (the only one on most devices).
     for (std::uint32_t i = 0; i < memory.memoryHeapCount; ++i) {
         if ((memory.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0u && budgets[i].budget > budget) {
             budget = budgets[i].budget;
@@ -934,9 +696,6 @@ MappedBuffer Context::create_mapped_buffer(std::uint64_t size, VkBufferUsageFlag
     buffer_info.size = size;
     buffer_info.usage = usage;
     buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    // Mapped memory is coherent: the shared ring code never flushes (every Vulkan device has a host-visible coherent
-    // type). With sequential writes, preferring the device picks device memory that is also host-visible where there
-    // is some, else host memory.
     VmaAllocationCreateInfo alloc_info{};
     alloc_info.usage = place == BufferPlace::Host ? VMA_MEMORY_USAGE_AUTO_PREFER_HOST : VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
     if (place != BufferPlace::Device) {
@@ -968,7 +727,7 @@ std::shared_ptr<Buffer> Context::create_buffer(std::uint64_t size, VkBufferUsage
     buffer->size = made.size;
     buffer->address = register_address(made.buffer);
     if (buffer->address == 0u) {
-        return {};  // the reference's release destroys the buffer
+        return {};
     }
     return buffer;
 }
@@ -978,8 +737,6 @@ std::shared_ptr<Buffer> Context::create_readback_buffer(std::uint64_t size, cons
     buffer_info.size = size;
     buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    // Cached host memory: the CPU reads every byte, which uncached write-combined memory makes slow. Where cached
-    // memory's invalidation costs more (Mali, Adreno), coherent memory, cached as well where the device has such a type.
     VmaAllocationCreateInfo alloc_info{};
     alloc_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
     alloc_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
@@ -1060,7 +817,6 @@ UploadMemory create_upload_memory(Device*, std::size_t bytes, const char* name) 
     if (!context.ready() || bytes == 0u) {
         return {};
     }
-    // One buffer serves any ring: vertices, indices, constants (uniform) and matrix palettes (storage).
     std::shared_ptr<vk::Buffer> buffer = context.create_buffer(
         bytes,
         VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
