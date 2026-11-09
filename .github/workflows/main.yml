@@ -99,11 +99,10 @@ jobs:
         run: cmake --build build\host --target NebulaNative --config Release
 
       - name: Build host (NebulaNativeVk)
-        if: ${{ matrix.config.vulkan == 'ON' }} 
+        if: ${{ matrix.config.vulkan == 'ON'&& false }} 
         run: cmake --build build\host --target NebulaNativeVk --config Release
 
-      - name: Build game module (smg_game.dll)
-        if: false 
+      - name: Build game module (smg_game.dll) 
         shell: pwsh
         run: .\native\build.ps1 -Petari native\petari -Build build\game
 
