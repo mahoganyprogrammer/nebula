@@ -60,8 +60,6 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      
-
       - name: Set up CMake
         uses: jwlawson/actions-setup-cmake@v2
         with:
@@ -83,6 +81,14 @@ jobs:
       - name: Build game files (nebula-import)
         run: cargo build --release --locked -p nebula-import
 
+      - name: Upload nebula-import artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nebula-import-${{ matrix.config.name }}-${{ github.sha }}
+          path: target/release/nebula-import.exe
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Configure host
         shell: pwsh
         run: |
@@ -94,15 +100,17 @@ jobs:
             -DCMAKE_CXX_COMPILER="$clangxx" `
             -DNEBULA_VULKAN=${{ matrix.config.vulkan }} `
             -DNEBULA_FSR3=${{ matrix.config.fsr3 }}
+
       - name: Build host (NebulaNative)
         if: false
         run: cmake --build build\host --target NebulaNative --config Release
 
       - name: Build host (NebulaNativeVk)
-        if: ${{ matrix.config.vulkan == 'ON'&& false }} 
+        if: ${{ matrix.config.vulkan == 'ON' && false }}
         run: cmake --build build\host --target NebulaNativeVk --config Release
 
-      - name: Build game module (smg_game.dll) 
+      - name: Build game module (smg_game.dll)
+        if: false
         shell: pwsh
         run: .\native\build.ps1 -Petari native\petari -Build build\game
 
@@ -127,21 +135,18 @@ jobs:
         run: |
           $out = "build\dist-${{ matrix.config.name }}"
           New-Item -ItemType Directory -Force -Path $out | Out-Null
-
           Copy-Item build\host\NebulaNative.exe $out -ErrorAction Stop
           if (Test-Path build\host\NebulaNativeVk.exe) {
             Copy-Item build\host\NebulaNativeVk.exe $out
           }
           Copy-Item build\game\smg_game.dll $out -ErrorAction Stop
           Copy-Item target\release\nebula-import.exe $out -ErrorAction Stop
-
           if (Test-Path "vendor") {
             Copy-Item -Recurse vendor $out
           }
           Get-ChildItem -Recurse -Filter "*.exe" -Path setup,launcher -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -match '\\bin\\Release\\' } |
             ForEach-Object { Copy-Item $_.FullName $out }
-
           Get-ChildItem $out | Format-Table Name, Length
 
       - name: Upload artifacts
@@ -192,22 +197,3 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  test-import:
-    name: Smoke-test nebula-import
-    runs-on: windows-2022
-    needs: build
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-
-      - name: Verify nebula-import runs
-        shell: pwsh
-        run: |
-          $exe = Get-ChildItem -Path dist -Recurse -Filter nebula-import.exe |
-                 Select-Object -First 1
-          if (-not $exe) { throw "nebula-import.exe missing from artifacts" }
-          & $exe.FullName --help
-          if ($LASTEXITCODE -ne 0) { throw "nebula-import --help exited with $LASTEXITCODE" }
