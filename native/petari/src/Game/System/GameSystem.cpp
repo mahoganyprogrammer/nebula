@@ -15,13 +15,12 @@
 #include "Game/System/GameSystemFontHolder.hpp"
 #include "Game/System/GameSystemFunction.hpp"
 #include "Game/System/GameSystemObjHolder.hpp"
-#include "Game/System/GameSystemResetAndPowerProcess.hpp"
+#include "Game/System/GameSystemRestartProcess.hpp"
 #include "Game/System/GameSystemSceneController.hpp"
-#include "Game/System/HeapMemoryWatcher.hpp"
+#include "Game/System/Arenas.hpp"
 #include "Game/System/HomeButtonStateNotifier.hpp"
 #include "Game/System/GameFrame.hpp"
 #include "Game/Util/MathUtil.hpp"
-#include "Game/Util/MemoryUtil.hpp"
 #include "Game/Util/NerveUtil.hpp"
 #include "Game/Util/SequenceUtil.hpp"
 #include "Game/Util/SingletonHolder.hpp"
@@ -50,8 +49,8 @@ namespace NrvGameSystem {
 extern "C" void nebula_game_main(void) {
     NebulaArena::create(nullptr);
     Ui::LytInit();
-    SingletonHolder< HeapMemoryWatcher >::init();
-    SingletonHolder< HeapMemoryWatcher >::get()->setCurrentHeapToPermanent();
+    Arenas::create();
+    Arenas::permanent()->makeCurrent();
     SingletonHolder< GameSystem >::init();
     SingletonHolder< GameSystem >::get()->init();
 
@@ -71,7 +70,8 @@ GameSystem::GameSystem()
 }
 
 void GameSystem::init() {
-    nebula_host()->mods_start(nebula_host()->user);
+    const NebulaHostServices* const pHost = nebula_host();
+    pHost->mods_start(pHost->user);
     Frame::registerPipelineList();
     mObjHolder = new GameSystemObjHolder();
     mFontHolder = new GameSystemFontHolder();
@@ -82,8 +82,8 @@ void GameSystem::init() {
     mSceneController = new GameSystemSceneController();
     mObjHolder->init();
     mErrorWatcher = new GameSystemErrorWatcher();
-    SingletonHolder< GameSystemResetAndPowerProcess >::init();
-    SingletonHolder< GameSystemResetAndPowerProcess >::get()->initWithoutIter();
+    SingletonHolder< GameSystemRestartProcess >::init();
+    SingletonHolder< GameSystemRestartProcess >::get()->initWithoutIter();
     mHomeButtonLayout = new HomeButtonLayout();
     mHomeButtonStateNotifier = new HomeButtonStateNotifier();
     setNerve(GET_NERVE(GameSystem, GameSystemInitializeAudio));
@@ -100,7 +100,7 @@ bool GameSystem::isDoneLoadSystemArchive() const {
 void GameSystem::startToLoadSystemArchive() {
     mIsExecuteLoadSystemArchive = true;
 
-    SingletonHolder< HeapMemoryWatcher >::get()->setCurrentHeapToPermanent();
+    Arenas::permanent()->makeCurrent();
     SingletonHolder< NameObjRegister >::get()->setCurrentHolder(mObjHolder->mObjHolder);
     setNerve(GET_NERVE(GameSystem, GameSystemLoadSystemArchive));
 }
@@ -119,7 +119,7 @@ void GameSystem::exeInitializeAudio() {
 
 void GameSystem::exeInitializeBootScene() {
     if (MR::isFirstStep(this)) {
-        MR::requestChangeScene("Boot");
+        MR::requestChangeScene(SceneKind_Boot);
     }
 
     updateSceneController();
@@ -127,7 +127,7 @@ void GameSystem::exeInitializeBootScene() {
 
 void GameSystem::exeLoadSystemArchive() {
     initAfterSystemArchiveLoaded();
-    SingletonHolder< HeapMemoryWatcher >::get()->setCurrentHeapToGameHeap();
+    Arenas::permanent()->makeCurrent();
     GameSystemFunction::setSceneNameObjHolderToNameObjRegister();
     updateSceneController();
     setNerve(GET_NERVE(GameSystem, GameSystemNormal));
@@ -195,11 +195,11 @@ void GameSystem::draw() {
         NebulaSettingsMenu::draw();
         mObjHolder->drawStarPointer();
     }
-    SingletonHolder< GameSystemResetAndPowerProcess >::get()->draw();
+    SingletonHolder< GameSystemRestartProcess >::get()->draw();
 }
 
 void GameSystem::update() {
-    SingletonHolder< GameSystemResetAndPowerProcess >::get()->movement();
+    SingletonHolder< GameSystemRestartProcess >::get()->movement();
     mSceneController->checkRequestAndChangeScene();
     mObjHolder->update();
     NebulaMenuFocus::update();
@@ -222,7 +222,7 @@ void GameSystem::update() {
 
 void GameSystem::updateSceneController() {
     bool isSceneUpdate = true;
-    bool isResetProcessing = SingletonHolder< GameSystemResetAndPowerProcess >::get()->isActive();
+    bool isResetProcessing = SingletonHolder< GameSystemRestartProcess >::get()->isActive();
 
     if (isResetProcessing) {
         isSceneUpdate = false;

@@ -3,6 +3,7 @@
 #include "Game/System/NebulaFrameClock.hpp"
 #include "Game/System/NebulaHost.hpp"
 #include "Game/Util/ScreenUtil.hpp"
+#include "Game/Util/StringUtil.hpp"
 #include <cstring>
 #include <nebula_game_api.h>
 #include <Game/Ui/Layout.hpp>
@@ -137,26 +138,26 @@ namespace {
     };
 
     bool isNamed(const Pane* pPane, const char* pName) {
-        return strcmp(pPane->mName, pName) == 0;
+        return MR::isEqualString(pPane->mName, pName);
     }
 
-    bool add(LayoutManager* pManager, Pane* pPane, u32 fit, f32 width, f32 height) {
-        const s32 capacity = static_cast< s32 >(sizeof(pManager->mAnchors) / sizeof(pManager->mAnchors[0]));
-        if (pPane == nullptr || pManager->mAnchorCount == capacity) {
-            return false;
+    void add(LayoutManager* pManager, Pane* pPane, u32 fit, f32 width, f32 height) {
+        if (pPane == nullptr) {
+            return;
         }
-        Anchor& rAnchor = pManager->mAnchors[pManager->mAnchorCount++];
-        rAnchor.mpPane = pPane;
-        rAnchor.mFit = fit;
-        rAnchor.mWidth = width;
-        rAnchor.mHeight = height;
-        return true;
+        Anchor anchor;
+        anchor.mpPane = pPane;
+        anchor.mFit = fit;
+        anchor.mWidth = width;
+        anchor.mHeight = height;
+        pManager->mAnchors.push_back(anchor);
     }
 
     // In the order they apply: the cinema bars, the backings, then the layout's rules in table order (an offset
     // moves the screen matrices the later ones read).
     void resolve(LayoutManager* pManager) {
-        pManager->mAnchorCount = 0;
+        pManager->mAnchors.clear();
+        pManager->mAnchorsResolved = true;
         Pane* pRoot = pManager->mLayout->mpRootPane;
         if (pRoot == nullptr) {
             return;
@@ -192,16 +193,16 @@ namespace {
         }
         for (u32 i = 0; pManager->mLayoutName != nullptr && i < sizeof(cFitRules) / sizeof(cFitRules[0]); i++) {
             const FitRule& rRule = cFitRules[i];
-            if (strcmp(rRule.mLayout, pManager->mLayoutName) == 0) {
+            if (MR::isEqualString(rRule.mLayout, pManager->mLayoutName)) {
                 add(pManager, pRoot->FindPaneByName(rRule.mPane, true), rRule.mFit, rRule.mWidth, rRule.mHeight);
             }
         }
-        if (pManager->mAnchorCount != 0) {
-            pManager->mLayout->SetAnchors(pManager->mAnchors, static_cast< u32 >(pManager->mAnchorCount));
+        if (pManager->mAnchors.size() != 0) {
+            pManager->mLayout->SetAnchors(pManager->mAnchors.begin(), static_cast< u32 >(pManager->mAnchors.size()));
         }
     }
 
-    // The canvas setupDrawForNW4RLayout projects; 608x456 when nothing changes.
+    // The canvas setupDrawForLayout projects; 608x456 when nothing changes.
     Canvas getCanvas() {
         Canvas canvas = {NebulaFrameClock::cLayoutWidth, NebulaFrameClock::cScreenHeight, 0.0f, 0.0f, 1.0f, 1.0f, false};
         if (MR::isScreen16Per9() && MR::getDisplay().wide) {
@@ -219,10 +220,10 @@ namespace {
 
 namespace LayoutAspect {
     void prepare(LayoutManager* pManager) {
-        if (pManager->mAnchorCount < 0) {
+        if (!pManager->mAnchorsResolved) {
             resolve(pManager);
         }
-        if (pManager->mAnchorCount != 0) {
+        if (pManager->mAnchors.size() != 0) {
             pManager->mLayout->SetCanvas(getCanvas());
         }
     }

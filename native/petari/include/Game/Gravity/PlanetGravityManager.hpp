@@ -11,14 +11,9 @@ class PlanetGravityManager : public NameObj {
 public:
     PlanetGravityManager(const char* pName);
 
-    virtual ~PlanetGravityManager() {
-    }
-
-    virtual void init(const TableIter& rIter);
-
     // Skips the gravities hosted by requester and those outside gravityType (a GravityType mask). pInfo gets the
     // highest priority gravity that applies.
-    bool calcTotalGravityVector(Vec3f* pGravity, GravityInfo* pInfo, const Vec3f& rPosition, u32 gravityType, uintptr_t requester) const;
+    bool calcTotalGravityVector(Vec3f* pGravity, GravityInfo* pInfo, const Vec3f& rPosition, u32 gravityType, const void* pHost) const;
     void registerGravity(PlanetGravity* pGravity);
 
 private:

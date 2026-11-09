@@ -5,9 +5,6 @@
 
 #include <cmath>
 
-CameraContext::~CameraContext() {
-}
-
 CameraContext::CameraContext() : NameObj("カメラコンテキスト") {
     initParams();
 }
@@ -19,9 +16,6 @@ void CameraContext::initParams() {
     mViewInv.invert(mViewInv);
 
     mFovy = 45.0f;
-    const f32 height = MR::getScreenHeight();
-    const f32 width = MR::getScreenWidth();
-    mAspectRatio = width / height;
     mNearZ = 100.0f;
     mFarZ = 800000.0f;
 
@@ -39,14 +33,7 @@ const Pos3f& CameraContext::getInvViewMtx() const {
 }
 
 f32 CameraContext::getAspect() const {
-    if (MR::isScreen16Per9()) {
-        if (MR::getDisplay().wide) {
-            return MR::getDisplay().content_aspect;
-        }
-        return 16.0f / 9.0f;
-    } else {
-        return static_cast< f32 >(MR::getScreenWidth()) / MR::getScreenHeight();
-    }
+    return MR::getScreenAspect();
 }
 
 // The vertical field of view the picture is drawn with: the camera's, and below 4:3 (the native build's wide shapes) widened

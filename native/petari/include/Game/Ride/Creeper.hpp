@@ -5,7 +5,7 @@
 #include <nebula_geometry.hpp>
 
 class ActorCameraInfo;
-class JUTTexture;
+class GameTexture;
 class PartsModel;
 
 class CreeperPoint {
@@ -45,8 +45,6 @@ public:
 class Creeper : public LiveActor {
 public:
     Creeper(const char*);
-
-    virtual ~Creeper();
 
     virtual void init(const TableIter&);
     virtual void control();
@@ -92,7 +90,7 @@ public:
     f32 mJumpSpeedUp;
     ActorCameraInfo* mCameraInfo;
     Vec3f mClippingCenter;
-    JUTTexture* mTexture;
+    GameTexture* mTexture;
     PartsModel* mFlowerModel;
     PartsModel* mLeafModel;
     Pos3f mTopMtx;

@@ -2,8 +2,13 @@
 // What every program shares: the view, the composed rows, the instance table, lights, fog's forms and the output variants.
 // A program is one stage: programs/v*.hlsl and p*.hlsl (crates/nebula-import/src/cook/programs.rs) and the written ones
 // beside this file. Bindings: b0 the view, b1 a generated vertex stage's material constants, b2 a generated pixel stage's
-// and both stages' of a written program, b3 the draw's
-// root constants, t0-t15 and s0-s15 the material's textures, t16 the composed rows, t17 the instance table.
+// and both stages' of a written program, b3 the draw's root constants, t16 the composed rows, t17 the instance table;
+// the textures and samplers: TEX/SAMP below (every texture at t0 and every sampler at s0 in space1, the draws' lists at
+// t18; or, under NEBULA_BOUND_TABLES, the draw's own table at t0 and s0 of NEBULA_TABLE_SLOTS maps).
+// Vulkan sets (shader_compile_vk.cpp kDrawBindings): set 0 b0-b2 at bindings 0-2 (dynamic), t16 at 3, t17 at 4, t18 at 5
+// (storage buffers); set 1 binding 0 the images (t0, space1 or the bound t0); set 2 binding 0 the samplers (s0, space1 or
+// the bound s0); b3 the push constants. The compiler defines NEBULA_VULKAN, and on a device without descriptor indexing
+// NEBULA_BOUND_TABLES with NEBULA_TABLE_SLOTS; otherwise the arrays are runtime-sized.
 //
 // Output variants (defines): NATIVE_REACTIVE (SV_Target1: the reactive mask), NATIVE_LAYER (with NATIVE_REACTIVE: the
 // effects layer's colour and transmission at SV_Target2-3), NATIVE_MOTION (SV_Target1: the motion vector), NATIVE_SAMPLE
@@ -29,13 +34,33 @@ cbuffer Draw : register(b3) {
     uint draw_flags;
     float draw_half_line;   // a widened line's half width in pixels
     float draw_half_point;  // a widened point's half size in pixels
+    uint draw_table;        // the draw's first entry in draw_tables
 };
 
 StructuredBuffer<float4> rows : register(t16);
 StructuredBuffer<uint4> instances : register(t17);  // row base, last frame's row base, light base, world row base
 
-Texture2D tex[NEBULA_MATERIAL_SLOTS] : register(t0);
-SamplerState samp[NEBULA_MATERIAL_SLOTS] : register(s0);
+// The draw's textures: TEX(n) and SAMP(n) are its n-th map and that map's sampler.
+#if NEBULA_BOUND_TABLES
+// Devices without descriptor indexing (Vulkan only): the draw's own table of NEBULA_TABLE_SLOTS maps, bound per draw.
+#ifndef NEBULA_TABLE_SLOTS
+#error NEBULA_BOUND_TABLES needs NEBULA_TABLE_SLOTS
+#endif
+Texture2D tex[NEBULA_TABLE_SLOTS] : register(t0);
+SamplerState samp[NEBULA_TABLE_SLOTS] : register(s0);
+#define TEX(n) tex[n]
+#define SAMP(n) samp[n]
+#else
+// Every texture and sampler in one array each, bound once; the draw's list holds each map's places in them (x the
+// texture, y the sampler), the same for every pixel of the draw.
+// Unbounded on both back ends: Direct3D 12 binds the descriptor heap, and in SPIR-V they are OpTypeRuntimeArray
+// (capability RuntimeDescriptorArray) over the image and sampler sets, whose lengths the renderer chooses.
+Texture2D gTextures[] : register(t0, space1);
+SamplerState gSamplers[] : register(s0, space1);
+StructuredBuffer<uint2> draw_tables : register(t18);
+#define TEX(n) gTextures[draw_tables[draw_table + (n)].x]
+#define SAMP(n) gSamplers[draw_tables[draw_table + (n)].y]
+#endif
 
 // A draw matrix is six rows: three of its place, three of its normal.
 struct Place {
@@ -149,6 +174,7 @@ float fog_rev_exp2(float f) { const float g = 1.0 - f; return exp2(-8.0 * g * g)
 #if NATIVE_MOTION
 #define NEBULA_TEXCOORD_IMPL(n) TEXCOORD##n
 #define NEBULA_TEXCOORD(n) NEBULA_TEXCOORD_IMPL(n)
+// The motion varyings follow the program's own coordinates: the text that uses them defines the two indices (numbers).
 #define VARYINGS_MOTION float4 mv_cur : NEBULA_TEXCOORD(NEBULA_MOTION_CURRENT_INDEX); float4 mv_prev : NEBULA_TEXCOORD(NEBULA_MOTION_PREVIOUS_INDEX);
 #define PLACE_OUT(o, p) o.pos = p.clip; o.mv_cur = p.mv_cur; o.mv_prev = p.mv_prev
 #else

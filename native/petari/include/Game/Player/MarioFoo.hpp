@@ -5,7 +5,7 @@
 
 class MarioActor;
 class AreaObj;
-class JUTTexture;
+class GameTexture;
 
 class MarioFoo : public MarioState {
 public:
@@ -61,9 +61,10 @@ public:
     Mtx34f mTiltMtx;  // the upper body's tilt
     u16 mBrakeTimer;  // frames of the brake (A); 8 or more boost after it (to 20)
     u8 mBraking;  // braking
-    Vec3f mTrailPos[64];  // the trail's points (a ring of 64)
-    Vec3f mTrailSide[64];  // each trail point's hand-to-hand direction
+    static const u32 cTrailNum = 64;  // the trail's points, one taken each update
+    Vec3f mTrailPos[cTrailNum];  // the trail's points (a ring)
+    Vec3f mTrailSide[cTrailNum];  // each trail point's hand-to-hand direction
     u32 mTrailLength;  // points in the trail
     u32 mTrailIndex;  // the next trail point
-    JUTTexture* mTrailTexture;  // FooLine.bti
+    GameTexture* mTrailTexture;  // FooLine.bti
 };

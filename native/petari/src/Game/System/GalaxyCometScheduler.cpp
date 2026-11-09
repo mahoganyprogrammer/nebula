@@ -155,10 +155,9 @@ const GalaxyCometTimePaper* const sGalaxyCometTimerPaper[] = {
     sCometTimeTableGrandGalaxy4, sCometTimeTableGrandGalaxy5, sCometTimeTableGrandGalaxy6,
 };
 
-// A mod's schedule for a dome, in place of the game's.
-// A mod can have more domes than the game's six.
-const s32 cMostDomes = 16;
-const GalaxyCometTimePaper* sTimePaperSet[cMostDomes] = {};
+// A mod's schedule for a dome, in place of the game's; null: the game's. A mod can have more domes than the game's six.
+static MR::GrowBuffer< const GalaxyCometTimePaper* > sTimePaperSet;
+static s32 sTimePaperCount;  // one past the highest dome a mod set
 
 const GalaxyCometSerializeInfo cSerializeInfoPurpleCometAppear = {0x0007, 0};
 
@@ -242,8 +241,12 @@ bool GalaxyCometTimeTable::findSuitableTimePaperPos(s32* pResultPos, s32 startPo
         }
 
         s32 category = mTimePaper[timePaperPos].mCategory;
-        const char* galaxyName = mTimePaper[timePaperPos].mGalaxyName;
+        // A mod's schedule may name a galaxy the save keeps no stars for: it never appears.
+        const char* galaxyName = GameDataFunction::findStarGalaxyName(mTimePaper[timePaperPos].mGalaxyName);
         bool canAppear;
+        if (galaxyName == nullptr) {
+            category = -1;
+        }
         switch (category) {
         case GalaxyCometCategory_Normal:
             canAppear = MR::canAppearNormalComet(galaxyName);
@@ -278,20 +281,29 @@ void GalaxyCometTimeTable::advance() {
 }
 
 void GalaxyCometScheduler::setTimePaper(s32 dome, const GalaxyCometTimePaper* pPaper) {
-    if (dome >= 0 && dome < cMostDomes) {
-        sTimePaperSet[dome] = pPaper;
+    if (dome < 0) {
+        return;
     }
+    if (dome >= sTimePaperCount) {
+        sTimePaperSet.room(dome + 1);
+        for (s32 i = sTimePaperCount; i < dome; i++) {
+            sTimePaperSet[i] = nullptr;
+        }
+        sTimePaperCount = dome + 1;
+    }
+    sTimePaperSet[dome] = pPaper;
 }
 
 GalaxyCometScheduler::GalaxyCometScheduler() : mTimeTables(), mEnabled(true) {
     // The game's six and any more a mod gave a schedule, one after another.
     s32 domes = 6;
-    while (domes < cMostDomes && sTimePaperSet[domes] != nullptr) {
+    while (domes < sTimePaperCount && sTimePaperSet[domes] != nullptr) {
         domes++;
     }
     mTimeTables.init(domes);
     for (s32 i = 0; i < mTimeTables.size(); i++) {
-        mTimeTables[i] = new GalaxyCometTimeTable(sTimePaperSet[i] != nullptr ? sTimePaperSet[i] : sGalaxyCometTimerPaper[i]);
+        const GalaxyCometTimePaper* const pModPaper = i < sTimePaperCount ? sTimePaperSet[i] : nullptr;
+        mTimeTables[i] = new GalaxyCometTimeTable(pModPaper != nullptr ? pModPaper : sGalaxyCometTimerPaper[i]);
     }
 }
 

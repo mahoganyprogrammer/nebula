@@ -13,15 +13,10 @@ const EffectLineCommand AudEffector::cFxLine[4] = {
 AudEffector::AudEffector() : mFxSend(), mCutoff(0x7F), mSpecialFx() {
 }
 
-void AudEffector::initFxLine(NebulaArena*) {
+void AudEffector::initFxLine() {
     SoundRing& rRing = SoundEngine::get()->ring();
     for (u32 i = 0; i < 4; i++) {
-        SoundCommand& rCommand = rRing.next();
-        rCommand.mKind = SOUND_EFFECT_LINE;
-        rCommand.mArg = 0;
-        rCommand.mValue = 0;
-        rCommand.mTarget = nullptr;
-        rCommand.payload< EffectLineCommand >() = cFxLine[i];
+        rRing.next(SOUND_EFFECT_LINE, nullptr).payload< EffectLineCommand >() = cFxLine[i];
         rRing.send();
     }
 }

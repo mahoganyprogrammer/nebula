@@ -38,14 +38,12 @@ public:
 
     StageSwitchContainer();
 
-    virtual ~StageSwitchContainer();
-
     void createAndAddZone(const SwitchIdInfo& rInfo);
     ZoneSwitch* getZoneSwitch(const SwitchIdInfo& rInfo);
     ZoneSwitch* findZoneSwitchFromTable(const SwitchIdInfo& rInfo);
 
 private:
-    MR::Vector< MR::FixedArray< ContainerSwitch, 20 > > mSwitches;
+    MR::InlineVector< ContainerSwitch, 20 > mSwitches;
     ZoneSwitch* mGlobalSwitches;
 };
 

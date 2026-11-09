@@ -10,7 +10,7 @@
 #include "Game/Util/GravityUtil.hpp"
 #include "Game/Util/LiveActorUtil.hpp"
 #include "Game/Util/MathUtil.hpp"
-#include "Game/Util/MemoryUtil.hpp"
+#include "Game/System/NebulaArena.hpp"
 #include "Game/Util/ObjUtil.hpp"
 #include "Game/Util/PlacementUtil.hpp"
 #include "Game/Util/PlayerUtil.hpp"
@@ -67,9 +67,6 @@ OceanRing::OceanRing(const char* pName) : LiveActor(pName) {
     mClippingBox.f.zero();
 }
 
-OceanRing::~OceanRing() {
-}
-
 // Obj_arg0: 0 is a pipe of water (with its own model); 2 low waves, else medium waves, no pipe.
 // Obj_arg1: segments updated ahead of the player.
 void OceanRing::init(const TableIter& rIter) {
@@ -101,8 +98,8 @@ void OceanRing::init(const TableIter& rIter) {
     MR::getPlacementArg1NoInit(rIter, &mUpdateSegsAhead);
     mBloomDrawer = new OceanRingBloomDrawer(this);
     mBloomDrawer->initWithoutIter();
-    mWatchSoundObj = new AudSoundObject(&mNearestToWatchCam, 4, MR::getCurrentHeap());
-    mCamSoundObj = new AudSoundObject(&mNearestToCam, 4, MR::getCurrentHeap());
+    mWatchSoundObj = new AudSoundObject(&mNearestToWatchCam, 4, NebulaArena::current());
+    mCamSoundObj = new AudSoundObject(&mNearestToCam, 4, NebulaArena::current());
     MR::registerDemoSimpleCastAll(this);
     makeActorAppeared();
 }
@@ -349,8 +346,6 @@ void OceanRing::initPoints() {
 
         f32 railCoord = MR::getRailCoord(this);
         f32 widthRate = calcCurrentWidthRate(railCoord);
-        railCoord = MR::getRailCoord(this);
-        f32 flowSpeedRate = calcCurrentFlowSpeedRate(railCoord);
 
         for (s32 j = -cCenterPoint; j <= cCenterPoint; j++) {
             Vec3f pos(side);
@@ -363,7 +358,7 @@ void OceanRing::initPoints() {
                 ease = MR::getEaseOutValue(edgeRate, 0.0f, 1.0f, 1.0f);
             }
 
-            mWaterPoints[index] = new WaterPoint(pos, up, ((j + cCenterPoint) * cPointSpacing), (seg * segLength), ease, flowSpeedRate);
+            mWaterPoints[index] = new WaterPoint(pos, up, ((j + cCenterPoint) * cPointSpacing), (seg * segLength), ease);
             index++;
         }
 

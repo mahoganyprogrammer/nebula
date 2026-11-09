@@ -1,16 +1,12 @@
 #include "Game/System/LayoutHolder.hpp"
 #include "Game/Util/SystemUtil.hpp"
 #include "Game/System/AssetFolder.hpp"
-#include <cstring>
 #include <nebula_game_api.h>
 
 #include "Game/Util/StringUtil.hpp"
 
 LayoutHolder::LayoutHolder(AssetFolder& rArchive) : Ui::ResourceAccessor(), mArchive(&rArchive) {
     initializeArc();
-}
-
-LayoutHolder::~LayoutHolder() {
 }
 
 void* LayoutHolder::GetResource(u32 resourceKind, const char* pName, u32* pResourceInfo) {
@@ -25,7 +21,7 @@ void* LayoutHolder::GetResource(u32 resourceKind, const char* pName, u32* pResou
         break;
     default:
 
-        if (strstr(pName, ".brfnt") == nullptr) {
+        if (!MR::isEqualSubString(pName, ".brfnt")) {
             pResource = mResOther.getRes(pName);
         }
 
@@ -49,19 +45,19 @@ Ui::Font* LayoutHolder::GetFont(const char* pName) {
     }
 
     if (!MR::strcasecmp(pName, "MenuFont64.brfnt")) {
-        return MR::getMenuFontNW4R();
+        return MR::getMenuFont();
     }
 
     if (!MR::strcasecmp(pName, "NumberFont.brfnt")) {
-        return MR::getNumberFontNW4R();
+        return MR::getNumberFont();
     }
 
     if (!MR::strcasecmp(pName, "PictureFont.brfnt")) {
-        return MR::getPictureFontNW4R();
+        return MR::getPictureFont();
     }
 
     if (MR::strcasecmp(pName, "CinemaFont26.brfnt") == 0) {
-        return MR::getCinemaFontNW4R();
+        return MR::getCinemaFont();
     }
 
     return MR::getFontOnCurrentLanguage();

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Game/Map/CollisionCode.hpp"
 #include "Game/Map/HitInfo.hpp"
 #include "Game/Player/MarioModule.hpp"
 #include "Game/Util/Array.hpp"
@@ -101,8 +102,8 @@ public:
     void forceSetHeadVecKeepSide(const Vec3f&);
     void setGravityVec(const Vec3f&);
     void draw() const;
-    void addTrans(const Vec3f&, const char*);
-    void setTrans(const Vec3f&, const char*);
+    void addTrans(const Vec3f&);
+    void setTrans(const Vec3f&);
     bool isEnableRush() const;
     bool isForceStopRush() const;
     bool isInvincible() const;
@@ -298,7 +299,7 @@ public:
     bool isSkatableFloor() const;
     bool doSkate();
 
-    u32 initSoundTable(SoundList* list);
+    u32 initSoundTable(const SoundList* list);
     void initSound();
     void playSoundJ(const char*, s32);
     void stopSoundJ(const char*, u32);
@@ -351,7 +352,7 @@ public:
     void fixWallingDir(bool);
     bool fixWallingTop();
     bool checkWallFloorCode(u16) const;
-    bool checkWallCode(const char*, bool) const;
+    bool checkWallCode(u16 code, bool frontBackOnly) const;
     bool checkWallCodeNorm(u16, Vec3f*, bool) const;
     void setWallCancel();
     void keepDistFrontWall();
@@ -669,11 +670,11 @@ public:
         mCorrectionTurnTimer = 0;
     }
 
-    inline void set3BC(u16 val) {
+    inline void setAirTimer(u16 val) {
         mAirTimer = val;
     }
 
-    inline void set41E(u16 val) {
+    inline void setDamageAfterTimer(u16 val) {
         mDamageAfterTimer = val;
     }
 
@@ -746,9 +747,9 @@ public:
     u16 mAirTimer;  // frames off the ground in a jump or hip drop
     u16 mJumpTimer;  // frames since the jump began (the trample-top open time)
     u16 mDropWaitTimer;  // frames left of the drop wait (DropWaitTime)
-    u16 mSlopeTimer;  // frames on a slope (mMovementStates._23)
+    u16 mSlopeTimer;  // frames of a slope slide (mMovementStates.slopeSlide)
     u16 mSlopeSteerInhibitTimer;  // frames the stick doesn't steer a slope slide
-    u16 mEdgePushTimer;  // frames pushed back from a ledge (DrawStates._18); past 8 the push goes sideways
+    u16 mEdgePushTimer;  // frames pushed back from a ledge (mDrawStates.edgePushBack); past 8 the push goes sideways
     u16 mJump2PDelayTimer;  // frames before a second player's jump request is taken
     u16 mBackJumpTimer;  // frames into a jump, for the back-jump limit (BackJumpLimitFrame)
     u16 mBackAirWalkTimer;  // frames left of a backward air walk
@@ -829,7 +830,7 @@ public:
 
     AreaObj* mArrivedWarpCube;  // the warp cube he came out of: entering it doesn't warp back (doCubeWarp)
     void* mGroundCheckOwner;  // who locked the ground check (lockGroundCheck)
-    MR::Vector< MR::FixedArray< Triangle, 32 > > mTouchedWalls;  // walls touched this frame
+    MR::InlineVector< Triangle, 32 > mTouchedWalls;  // walls touched this frame
     const HitSensor* mOnimasuSensor;  // the nearest Onimasu block's sensor (checkOnimasu)
     Vec3f mOnimasuLocalPos;  // his position in that block's space (updateOnimasu)
     u8 mOnimasuFound;  // a block was found this frame
@@ -964,6 +965,7 @@ public:
 
     MR::NameIndex mSounds;  // a sound's name to its index in soundlist
     const char* mRunningBas;  // the sound animation running (isRunningBas)
+    bool mRunningDamageWait;  // mRunningBas is "DamageWait": set with it in startBas
     MarioModuleTask* mTaskHead;  // the first module task (execTask, delTask)
 
 
@@ -980,5 +982,5 @@ public:
     Vec3f mHipDropSlideSide;  // the hip-drop slide's side
     f32 mHipDropSlideSpeed;  // the hip-drop slide's speed
     HitSensor* mHipDropSlideSensor;  // what the hip-drop slide follows
-    u8 mIndexedAnimeOn[0x20];  // which indexed animations count as running (MarioModule::isAnimationRun(name, index)); nothing sets one: find, listed
+    u8 mIndexedAnimeOn[MarioIndexedAnime_Count];  // set by MarioModule::changeAnimation(name, anime), cleared once it stops
 };

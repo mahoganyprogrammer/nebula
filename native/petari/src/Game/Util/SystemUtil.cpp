@@ -11,7 +11,7 @@
 #include "Game/System/GameSystemObjHolder.hpp"
 #include "Game/System/GameSystemSceneController.hpp"
 #include "Game/System/MessageHolder.hpp"
-#include "Game/System/RenderMode.hpp"
+#include "Game/System/NebulaSystemSettings.hpp"
 #include "Game/Util/HashUtil.hpp"
 #include "Game/Util/MemoryUtil.hpp"
 #include "Game/Util/SceneUtil.hpp"
@@ -41,19 +41,19 @@ namespace MR {
         return SingletonHolder< GameSystem >::get()->mFontHolder->getMessageFont();
     }
 
-    Ui::Font* getPictureFontNW4R() {
+    Ui::Font* getPictureFont() {
         return SingletonHolder< GameSystem >::get()->mFontHolder->mPictureFont;
     }
 
-    Ui::Font* getMenuFontNW4R() {
+    Ui::Font* getMenuFont() {
         return SingletonHolder< GameSystem >::get()->mFontHolder->mMenuFont;
     }
 
-    Ui::Font* getNumberFontNW4R() {
+    Ui::Font* getNumberFont() {
         return SingletonHolder< GameSystem >::get()->mFontHolder->mNumberFont;
     }
 
-    Ui::Font* getCinemaFontNW4R() {
+    Ui::Font* getCinemaFont() {
         return SingletonHolder< GameSystem >::get()->mFontHolder->mCinemaFont;
     }
 
@@ -78,9 +78,7 @@ namespace MR {
     }
 
     void setRandomSeedFromStageName() {
-        u32 seed = getHashCode(getCurrentStageName());
-
-        getGameSystemObjHolder()->mRandom.mSeed = seed;
+        getGameSystemObjHolder()->mRandom.mSeed = getHashCode(getCurrentStageName());
     }
 
     void holdSceneInitialize() {
@@ -92,7 +90,7 @@ namespace MR {
     }
 
     bool isScreen16Per9() {
-        return isAspectRatioFlag16Per9();
+        return NebulaSystemSettings::isWidescreen();
     }
 
     void initSceneMessage() {
@@ -106,14 +104,12 @@ namespace MR {
     void resetSystemAndGameStatus() {
         GameDataFunction::resetAllGameData();
         GameSystemFunction::resetAllControllerRumble();
-        resetGlobalTimer();
     }
 
     void stopAllSound(u32 param1) {
         getGameSystemObjHolder()->mAudioSystem->stopAllSound(param1);
     }
 
-    // The output is 60 Hz: no PAL television to suggest PAL60 for.
     PlacementId* getPlayerRestartIdInfo() {
         return ::getGameDataTemporaryInGalaxy()->mPlayerRestartIdInfo;
     }

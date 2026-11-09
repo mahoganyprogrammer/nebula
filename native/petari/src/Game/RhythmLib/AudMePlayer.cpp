@@ -14,8 +14,8 @@ void AudMeHandle::releaseMe() {
 }
 
 AudMe::AudMe()
-    : JSULink< AudMe >(this), mHandle(), mLink(), mPos(), mMeId(-1), mStopTime(-1), mTimer(), mStartRequested(false), mTrackBound(),
-      mPlace(), mMgrVolume(1.0f), mVolume(1.0f), mOuterPan(0.5f), mOuterDolby(0.0f), mPriority(), mFadeTime() {
+    : mHandle(), mLink(), mPos(), mMeId(-1), mStopTime(-1), mTimer(), mStartRequested(false), mTrackBound(),
+      mStackBound(), mPlace(), mMgrVolume(1.0f), mVolume(1.0f), mOuterPan(0.5f), mOuterDolby(0.0f), mPriority(), mFadeTime() {
     initTimed();
 }
 
@@ -23,15 +23,15 @@ AudMe::~AudMe() {
     release();
 }
 
-void AudMe::requestStart(u32 trackBound, u32 place) {
+void AudMe::requestStart(u32 trackBound, u32 stackBound, u32 place) {
     mTrackBound = trackBound;
+    mStackBound = stackBound;
     mPlace = place;
     mStartRequested = true;
 }
 
 void AudMe::start() {
-    updateTimedParams(true);
-    mLink.start(mTrackBound, AudMeMgr::getInstance()->programData(), mPlace, sound());
+    mLink.start(mTrackBound, mStackBound, AudMeMgr::getInstance()->programData(), mPlace, sound());
 }
 
 void AudMe::stop(s32 time) {
@@ -109,7 +109,7 @@ void AudMe::update() {
     }
 
     if (mLink.exists()) {
-        updateTimedParams(false);
+        updateTimedParams();
         mLink.frame(sound());
 
         if (mLink.status() == MeTrack::STATUS_FREE) {
@@ -145,11 +145,7 @@ void AudMe::initTimed() {
     }
 }
 
-void AudMe::updateTimedParams(bool immediate) {
-    if (immediate) {
-        return;
-    }
-
+void AudMe::updateTimedParams() {
     for (s32 i = 0; i < TIMED_PARAMS; i++) {
         if (mMoveParams[i].mDelta != 0.0f) {
             mMoveParams[i].mValue += mMoveParams[i].mDelta;
@@ -211,7 +207,7 @@ bool AudMe::isRequested(u32 place) const {
     return status == MeTrack::STATUS_RUN || status == MeTrack::STATUS_READY;
 }
 
-AudMeMgr::AudMeMgr(NebulaArena* pHeap) : SoundGlobal< AudMeMgr >(true), mHeap(pHeap), mMeSeq(), mMeVolume(1.0f) {
+AudMeMgr::AudMeMgr(NebulaArena* pArena) : SoundGlobal< AudMeMgr >(true), mArena(pArena), mMeSeq(), mMeVolume(1.0f) {
 }
 
 void AudMeMgr::setMeSeq(const void* pData) {
@@ -242,7 +238,7 @@ bool AudMeMgr::startMe(u32 meId, AudMeHandle* pHandle, const Vec3f* pPos) {
         }
     }
 
-    AudMe* me = new (mHeap, 0) AudMe();
+    AudMe* me = new (mArena, 0) AudMe();
 
     if (pHandle != nullptr) {
         me->attachHandle(pHandle);
@@ -263,7 +259,7 @@ bool AudMeMgr::startMe(u32 meId, AudMeHandle* pHandle, const Vec3f* pPos) {
 
     me->mMeId = meId;
     setOuterPlayingParam(meId, me);
-    me->requestStart(pEntry->mTrackBound, pEntry->mStart);
+    me->requestStart(pEntry->mTrackBound, pEntry->mStackBound, pEntry->mStart);
     mMeList.append(me);
     me->mMgrVolume = mMeVolume;
     return true;
@@ -271,8 +267,8 @@ bool AudMeMgr::startMe(u32 meId, AudMeHandle* pHandle, const Vec3f* pPos) {
 
 // A phrase that never started, or has ended, goes. A requested phrase starts in its first update.
 void AudMeMgr::freeDeadMe() {
-    for (JSULink< AudMe >* it = mMeList.getFirst(); it != mMeList.getEnd();) {
-        JSULink< AudMe >* next = it->getNext();
+    for (NebulaListLink< AudMe >* it = mMeList.getFirst(); it != mMeList.getEnd();) {
+        NebulaListLink< AudMe >* next = it->getNext();
         if (!it->getObject()->isPlaying()) {
             mMeList.remove(it);
             delete it->getObject();
@@ -283,7 +279,7 @@ void AudMeMgr::freeDeadMe() {
 }
 
 void AudMeMgr::updateEachMe() {
-    for (JSULink< AudMe >* it = mMeList.getFirst(); it != mMeList.getEnd(); it = it->getNext()) {
+    for (NebulaListLink< AudMe >* it = mMeList.getFirst(); it != mMeList.getEnd(); it = it->getNext()) {
         if (!AudWrap::getSystem()->getChordInfo()->isAvailable()) {
             it->getObject()->stop(0);
         }
@@ -293,13 +289,13 @@ void AudMeMgr::updateEachMe() {
 }
 
 void AudMeMgr::stopAll(s32 time) {
-    for (JSULink< AudMe >* it = mMeList.getFirst(); it != mMeList.getEnd(); it = it->getNext()) {
+    for (NebulaListLink< AudMe >* it = mMeList.getFirst(); it != mMeList.getEnd(); it = it->getNext()) {
         it->getObject()->stop(time);
     }
 }
 
 void AudMeMgr::setPauseFlagAll(bool pause) {
-    for (JSULink< AudMe >* it = mMeList.getFirst(); it != mMeList.getEnd(); it = it->getNext()) {
+    for (NebulaListLink< AudMe >* it = mMeList.getFirst(); it != mMeList.getEnd(); it = it->getNext()) {
         it->getObject()->setPauseFlag(pause);
     }
 }
@@ -322,7 +318,7 @@ const u8* AudMeMgr::programData() const {
 }
 
 bool AudMeMgr::isRequestedMe(u32 place) {
-    for (JSULink< AudMe >* it = mMeList.getFirst(); it != mMeList.getEnd(); it = it->getNext()) {
+    for (NebulaListLink< AudMe >* it = mMeList.getFirst(); it != mMeList.getEnd(); it = it->getNext()) {
         if (it->getObject()->isRequested(place)) {
             return true;
         }
@@ -332,7 +328,7 @@ bool AudMeMgr::isRequestedMe(u32 place) {
 }
 
 void AudMeMgr::setOuterPlayingParam(s32 meId, AudMe* pMe) {
-    AudMePlayingParams* params = &mParams.mParams[meId];
+    const AudMePlayingParams* params = &mParams.mParams[meId];
     f32 vol = params->mChordVolume / 127.0f;
     vol *= vol;
     f32 pan = params->mPan / 127.0f;
@@ -349,6 +345,6 @@ void AudMePlayingParamsHolder::setResource(void* pRes) {
 
     mNumEntries = numEntries;
     mBase = static_cast< const u8* >(pRes);
-    mParams = reinterpret_cast< AudMePlayingParams* >(static_cast< u8* >(pRes) + entryOff);
+    mParams = reinterpret_cast< const AudMePlayingParams* >(mBase + entryOff);
     mNameOffsets = reinterpret_cast< const u32* >(mBase + namesOff);
 }

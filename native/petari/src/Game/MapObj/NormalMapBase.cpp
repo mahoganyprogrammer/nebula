@@ -1,5 +1,6 @@
 #include "Game/Render/FrameList.hpp"
 #include "Game/MapObj/NormalMapBase.hpp"
+#include "Game/System/Arenas.hpp"
 #include "Game/Render/RenderTexture.hpp"
 #include "Game/Render/TypedDraw.hpp"
 #include "Game/LiveActor/Nerve.hpp"
@@ -17,7 +18,7 @@
 #include "Game/Render/Material.hpp"
 #include "Game/Render/Transform.hpp"
 #include "Game/System/NebulaArena.hpp"
-#include <JSystem/JUtility/JUTTexture.hpp>
+#include "Game/Render/GameTexture.hpp"
 #include <cmath>
 #include <cstring>
 #include <nebula_format.h>
@@ -32,7 +33,7 @@ namespace {
     SiteMaterial sNormalMap;
 }  // namespace
 
-NormalMapBase::NormalMapBase(const char* pName) : LiveActor(pName) {
+NormalMapBase::NormalMapBase(const char* pName) : LiveActor(pName), mTextures(nullptr) {
     mTexFlags = 0;
     mGradTexMode = 0;
     mBackLightMode = 0;
@@ -85,22 +86,22 @@ void NormalMapBase::setupLighting() {
 void NormalMapBase::setupTexture() {
     mNormalTex = nullptr;
     const u32 textureCount = MR::getModelData(this)->getTextureCount();
+    delete[] mTextures;
+    mTextures = new GameTexture*[textureCount];
     for (u32 i = 0; i < textureCount; i++) {
         const ResTIMG* pImage = MR::getResTIMG(this, i);
         const char* pName = MR::getTextureName(this, i);
         if (strstr(pName, "Nswap_")) {
             MR::FormattedName fileName("%s.bti", pName + 6);
             pImage = MR::getTexFromArc(fileName.c_str(), this);
-            mNormalTex = new JUTTexture(pImage);
+            mNormalTex = new GameTexture(pImage);
             mTextures[i] = mNormalTex;
-            mTextures[i]->mMinType = NEBULA_FILTER_LINEAR;
-            mTextures[i]->mMagType = NEBULA_FILTER_LINEAR;
-            mTextures[i]->init();
+            mTextures[i]->setFilter(NEBULA_FILTER_LINEAR, NEBULA_FILTER_LINEAR);
         } else if (strstr(pName, "ormal") && !mNormalTex) {
-            mNormalTex = new JUTTexture(pImage);
+            mNormalTex = new GameTexture(pImage);
             mTextures[i] = mNormalTex;
         } else {
-            mTextures[i] = new JUTTexture(pImage);
+            mTextures[i] = new GameTexture(pImage);
         }
 
         if (strstr(pName, "Zormal")) {
@@ -108,7 +109,7 @@ void NormalMapBase::setupTexture() {
         }
     }
 
-    mImagePtr = new (MR::getSceneHeap(), 0) u16[::cGradTexWidth * ::cGradTexHeight];
+    mImagePtr = new (Arenas::scene(), 0) u16[::cGradTexWidth * ::cGradTexHeight];
     createGradTexture();
 }
 
@@ -303,9 +304,9 @@ void NormalMapBase::loadDiffuseGradTex(u32 slot) const {
     sNormalMap.setTexture(slot, obj);
 }
 
-void NormalMapBase::loadNormalTex(const JUTTexture* pTex, u32 slot) const {
+void NormalMapBase::loadNormalTex(const GameTexture* pTex, u32 slot) const {
     SiteTexture obj;
-    SiteTextures::init(&obj, pTex->mImage, pTex->mTIMG->mWidth, pTex->mTIMG->mHeight, NEBULA_WRAP_CLAMP, NEBULA_WRAP_CLAMP);
+    SiteTextures::init(&obj, pTex->image(), pTex->info()->mWidth, pTex->info()->mHeight, NEBULA_WRAP_CLAMP, NEBULA_WRAP_CLAMP);
     if ((mTexFlags & 2) != 0 && (mTexFlags & 0x4) != 0) {
         SiteTextures::setFilter(&obj, NEBULA_FILTER_NEAREST, NEBULA_FILTER_NEAREST, 0.0f, 0.0f, 0.0f, false, 0);
     } else if ((mTexFlags & 0x2) != 0) {
@@ -497,8 +498,8 @@ void NormalMapBase::createGradTexture() {
     RenderTexture::linear(mImagePtr, NEBULA_TEXTURE_LINEAR_LA8, ::cGradTexWidth, ::cGradTexHeight, 1);
 }
 
-void NormalMapBase::swapColorGB(JUTTexture* pTexture) {
-    const NebulaTexture* pRecord = nebula_texture_record(pTexture->mImage);
+void NormalMapBase::swapColorGB(GameTexture* pTexture) {
+    const NebulaTexture* pRecord = nebula_texture_record(pTexture->image());
     if (pRecord == nullptr || pRecord->layout != NEBULA_TEXTURE_RGBA8) {
         return;
     }
@@ -524,24 +525,22 @@ void NormalMapBase::swapColorGB(JUTTexture* pTexture) {
         }
     }
 
-    pTexture->mImage = pCopy;
-    pTexture->mObj.mImage = pCopy;
+    pTexture->setImage(pCopy);
 }
 
-// One setting per line: the number leads the line and the name anywhere on it picks the setting. A line longer than the
-// buffer is cut, not overrun.
+// One setting per line: the number leads the line and the name anywhere on it picks the setting.
 void NormalMapBase::loadData(const char* pData, u32 size) {
     const char* const pEnd = pData + size;
     const char* pCursor = pData;
+    MR::FormattedName lineText;
     while (pCursor < pEnd) {
         const char* pLineEnd = pCursor;
         while (pLineEnd < pEnd && *pLineEnd != '\n' && *pLineEnd != '\r') {
             pLineEnd++;
         }
 
-        char line[256];
-        const u32 found = static_cast< u32 >(pLineEnd - pCursor);
-        const u32 length = found < sizeof(line) - 1 ? found : static_cast< u32 >(sizeof(line) - 1);
+        const u32 length = static_cast< u32 >(pLineEnd - pCursor);
+        char* const line = lineText.room(length + 1);
         memcpy(line, pCursor, length);
         line[length] = '\0';
 
@@ -567,7 +566,4 @@ void NormalMapBase::loadData(const char* pData, u32 size) {
         MR::scans16x4(line, "mTevColor0", reinterpret_cast< s16* >(&mStageColor0));
         MR::scans16x4(line, "mTevColor1", reinterpret_cast< s16* >(&mStageColor1));
     }
-}
-
-NormalMapBase::~NormalMapBase() {
 }

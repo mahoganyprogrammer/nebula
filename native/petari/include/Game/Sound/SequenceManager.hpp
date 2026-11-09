@@ -2,7 +2,7 @@
 
 #include "Game/Sound/SeqSource.hpp"
 #include "Game/Sound/SoundGlobal.hpp"
-#include "JSystem/JSupport/JSUList.hpp"
+#include "Game/System/NebulaList.hpp"
 
 class SoundAudience;
 class SequenceSound;
@@ -41,18 +41,14 @@ public:
         seqDataMgr = seqDataMgr_;
     }
 
-    SoundStrategyMgr< SequenceSound >* getSoundStrategyMgr() {
-        return soundStrategyMgr;
-    }
-
     SoundMove* getParams() {
         return &mMove;
     }
     bool isActive() const {
-        return mSeqList.getNumLinks() != 0;
+        return mSeqList.getNum() != 0;
     }
     int getNumActiveSeqs() const {
-        return mSeqList.getNumLinks();
+        return mSeqList.getNum();
     }
     void pause(bool paused) {
         mSoundActivity.pause(paused);
@@ -61,8 +57,7 @@ public:
 private:
     SoundAudience* mAudience;
     SeqSource* seqDataMgr;
-    SoundStrategyMgr< SequenceSound >* soundStrategyMgr;
     SoundMove mMove;
-    JSUList< SequenceSound > mSeqList;
+    NebulaList< SequenceSound > mSeqList;
     int mNumTracks;
 };

@@ -1,7 +1,7 @@
 #include "Game/RhythmLib/AudChordInfo.hpp"
 #include "Game/Sound/SoundEngine.hpp"
 #include "Game/System/AssetFolder.hpp"
-#include <cstring>
+#include "Game/Util/ByteView.hpp"
 
 AudChordInfo::AudChordInfo()
     : SoundGlobal< AudChordInfo >(true), mArchive(nullptr), mAvailable(false), mChordIndex(0), mScaleIndex(0), mSerial(0) {
@@ -29,10 +29,8 @@ bool AudChordInfo::loadChordInfo(s16 id, bool keepCurrent) {
     s32 scale = scaleIndex();
     bool available = false;
     if (valid) {
-        u16 chords;
-        u16 scales;
-        std::memcpy(&chords, pFile + 12, sizeof(chords));
-        std::memcpy(&scales, pFile + 14, sizeof(scales));
+        const u16 chords = readBytes< u16 >(pFile + 12);
+        const u16 scales = readBytes< u16 >(pFile + 14);
         const s32 wantChord = keepCurrent ? chord : 0;
         const s32 wantScale = keepCurrent ? scale : 0;
         const bool hasChord = wantChord < chords;
@@ -47,37 +45,28 @@ bool AudChordInfo::loadChordInfo(s16 id, bool keepCurrent) {
     }
 
     SoundRing& rRing = SoundEngine::get()->ring();
-    SoundCommand& rCommand = rRing.next();
-    rCommand.mKind = SOUND_CHORD_LOAD;
+    SoundCommand& rCommand = rRing.next(SOUND_CHORD_LOAD, nullptr);
     rCommand.mArg = keepCurrent ? 1 : 0;
-    rCommand.mValue = 0;
-    rCommand.mTarget = nullptr;
     rCommand.payload< const void* >() = valid ? pFile : nullptr;
-    rRing.send();
 
+    mSerial = rRing.send();
     mAvailable = available;
     mChordIndex = chord;
     mScaleIndex = scale;
-    mSerial = rRing.sent();
     return valid;
 }
 
-void AudChordInfo::invalidiate() {
+void AudChordInfo::invalidate() {
     const s32 chord = chordIndex();
     const s32 scale = scaleIndex();
 
     SoundRing& rRing = SoundEngine::get()->ring();
-    SoundCommand& rCommand = rRing.next();
-    rCommand.mKind = SOUND_CHORD_INVALIDATE;
-    rCommand.mArg = 0;
-    rCommand.mValue = 0;
-    rCommand.mTarget = nullptr;
-    rRing.send();
+    rRing.next(SOUND_CHORD_INVALIDATE, nullptr);
 
+    mSerial = rRing.send();
     mAvailable = false;
     mChordIndex = chord;
     mScaleIndex = scale;
-    mSerial = rRing.sent();
 }
 
 bool AudChordInfo::isAvailable() const {

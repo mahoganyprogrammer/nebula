@@ -18,7 +18,7 @@ bool Mario::tryCrush() {
     }
 
     if (mMovementStates.jumping || !mMovementStates.onGround) {
-        setTrans(mShadowPos, nullptr);
+        setTrans(mShadowPos);
     }
 
     if (getCurrentStatus() == MarioStatus_Crush) {
@@ -42,7 +42,7 @@ bool MarioCrush::close() {
     getPlayer()->mMovementStates.scaleBody = true;
     mActor->mScale.set(1.0f);
     stopAnimation("しびれ");
-    getPlayer()->set41E(120);
+    getPlayer()->setDamageAfterTimer(120);
     return true;
 }
 

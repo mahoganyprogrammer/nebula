@@ -24,7 +24,11 @@ extern "C" {
 #define NEBULA_GAME_API __attribute__((visibility("default")))
 #endif
 
-#define NEBULA_GAME_API_VERSION 142u
+#define NEBULA_GAME_API_VERSION 146u
+
+/* The game's fixed step: nebula_game_run's loop runs this many steps a second (frame_wait paces them), whatever the
+   display's rate; the host presents each or interpolates between them. */
+#define NEBULA_STEPS_PER_SECOND 60
 
 /* Viewports, scissors, clears, target sizes and picture points count this many units across a frame on each axis. */
 #define NEBULA_FRAME_UNITS 65536.0f
@@ -345,7 +349,7 @@ typedef struct NebulaDisplay {
     int32_t wide;          /* 0: 16:9, nothing changes */
     float content_aspect;  /* width / height, 4:3 to 32:9 */
     int32_t screen_width;  /* MR::getScreenWidth in the 16:9 mode (832 at 16:9) */
-    float layout_width;    /* the NW4R layout canvas (608 at 16:9 and narrower) */
+    float layout_width;    /* the layout canvas (608 at 16:9 and narrower) */
     float vertical_fit;    /* the layouts' height scale under 16:9 (1 at 16:9 and wider) */
 } NebulaDisplay;
 
@@ -425,15 +429,15 @@ typedef struct NebulaSaveRequest {
     void* buffer;
     uint32_t size;
     uint32_t* length;          /* read: the file's length (may be NULL) */
-    volatile int32_t* status;  /* the host sets NEBULA_SAVE_PENDING at once and the result when done */
+    int32_t* status;  /* the host sets NEBULA_SAVE_PENDING at once and the result when done (a release store; the game loads it acquire) */
 } NebulaSaveRequest;
 
 /* Nebula's settings menu as the host has it now (settings_view), for the game to draw in its own windows and words.
    The host keeps the settings, their pages, the draft and its apply, and takes the keyboard and controllers while the
    menu is open; the game shows it (and takes the pointer, settings_input). Texts are the host's own, in English
-   (UTF-8): the game names each in the played language (NebulaSettingsMenu). */
-#define NEBULA_SETTINGS_PAGES 8
-#define NEBULA_SETTINGS_ROWS 96
+   (UTF-8): the game names each in the played language (NebulaSettingsMenu).
+   The view has no fixed sizes: the page names and every row of the open page are sent whole. The strings, the page names
+   and the rows are the host's, valid until the next settings_view call; the game copies what it keeps. */
 
 enum {
     NEBULA_SETTINGS_ROW_HEADING = 1,     /* a section's title: never selected */
@@ -627,8 +631,8 @@ enum {
 };
 
 typedef struct NebulaSettingsRow {
-    char label[64];
-    char value[96];
+    const char* label;
+    const char* value;
     uint32_t flags; /* NEBULA_SETTINGS_ROW_* */
     uint16_t slider_steps;
     uint16_t slider_at;
@@ -638,23 +642,22 @@ typedef struct NebulaSettingsView {
     uint32_t open;
     uint32_t page;
     uint32_t page_count;
-    char pages[NEBULA_SETTINGS_PAGES][24];
-    uint32_t controls_page; /* the page whose rows are bindings (its hints differ) */
-    uint32_t input;         /* what the player last used, for the hints: NEBULA_SETTINGS_INPUT_* */
-    uint32_t total_rows;    /* the page's rows; `rows` holds `row_count` of them from `first_row`, around the selection */
-    uint32_t first_row;
-    uint32_t row_count;
-    uint32_t selected;      /* counted from the page's first row */
+    const char* const* pages; /* `page_count` names */
+    uint32_t controls_page;   /* the page whose rows are bindings (its hints differ) */
+    uint32_t input;           /* what the player last used, for the hints: NEBULA_SETTINGS_INPUT_* */
+    /* Changed by the host whenever anything else in the view changes: views with equal revisions are identical. */
+    uint32_t revision;
+    uint32_t total_rows;      /* the page's rows: `rows` holds all of them */
+    const NebulaSettingsRow* rows;
+    uint32_t selected;        /* counted from the page's first row */
     uint32_t selected_button; /* the selected row's, when it has buttons */
-    /* The MODS page's lists (off, on): the place in its list of each one's first row sent, and their lengths. */
-    uint32_t mod_list_first[2];
+    /* The MODS page's lists (off, on): their lengths. */
     uint32_t mod_list_count[2];
-    NebulaSettingsRow rows[NEBULA_SETTINGS_ROWS];
-    char help[192];
+    const char* help;
     uint32_t status; /* NEBULA_SETTINGS_STATUS_* */
     int32_t status_number;
-    char status_text[160];
-    char long_text[1536]; /* a license's page */
+    const char* status_text;
+    const char* long_text; /* a license's page */
 } NebulaSettingsView;
 
 /* The player's input to the settings menu (settings_input); the keyboard and controllers reach it through the host. */
@@ -795,10 +798,6 @@ typedef struct NebulaHostServices {
     /* The HOME Menu (NEBULA_HBM_*). */
     int (*hbm)(void* user, uint32_t what, uint32_t value);
 
-    /* One movie frame's video (`size` bytes, one JPEG whose entropy data is not byte-stuffed, so only the size bounds
-       it) into its Y, U and V planes (`width` x `height` for Y, half each way for U and V, rows of 8-bit texels from the
-       top) in game memory, which must hold the result before the renderer reads them; 0 on success. */
-    int32_t (*movie_video_decode)(void* user, const void* frame, uint32_t size, uint32_t width, uint32_t height, void* y, void* u, void* v);
 
 
     /* Game state the host's controls follow (NEBULA_CONTEXT_*), reported when it changes. */
@@ -826,12 +825,12 @@ typedef struct NebulaHostServices {
     void (*game_light)(void* user, uint32_t kind, uint64_t id, const float* values);
     /* The stage being played (MR::getCurrentStageName), before each 3D scene's begin marker. */
     void (*game_stage)(void* user, const char* name);
-    /* A movie (MovieStream): its disc path and NEBULA_MOVIE_OPENING when it opens, each frame it draws
-       (the frame within the movie, its frame rate and the texture ids of its Y, U and V planes, `width` x
-       `height` for Y and half each way for U and V), NEBULA_MOVIE_NONE when it closes. The host may show a replacement
-       video's frame of the same time in place of the planes. */
-    void (*movie_frame)(void* user, const char* name, int32_t frame, float frame_rate, uint32_t y, uint32_t u,
-                        uint32_t v, uint32_t width, uint32_t height);
+    /* A movie (MovieStream): its disc path and NEBULA_MOVIE_OPENING when it opens (with its cooked file, NMOV, as
+       mapped, once the game has it), each frame it draws (the frame within the movie, its frame rate, the file, the
+       picture's `width` x `height`), NEBULA_MOVIE_NONE when it closes. The host decodes the frame (or a replacement
+       video's frame of the same time) into the planes NEBULA_TEXTURE_MOVIE_Y, _U and _V the movie quad samples. */
+    void (*movie_frame)(void* user, const char* name, int32_t frame, float frame_rate, const void* data, uint64_t size,
+                        uint32_t width, uint32_t height);
     /* A native equivalent of a mod's code patch (NEBULA_PATCH_*): 1 with `value` set when an enabled mod carries it,
        else 0. Fixed for the session. */
     int (*code_patch)(void* user, uint32_t id, uint32_t* value);
@@ -908,12 +907,15 @@ typedef struct NebulaHostServices {
     uint32_t (*texture_table)(void* user, const NebulaFrameTexture* list, uint32_t count);
     /* A material's constants that do not change; the renderer takes a copy. */
     uint32_t (*material_register)(void* user, const float (*rows)[4], uint32_t vertex_rows, uint32_t pixel_rows);
-    uint32_t (*pipeline_register)(void* user, const NebulaPipelineDesc* desc);
+    /* `desc->input_count` NebulaLayoutInput at `inputs` (any count); the renderer takes copies of both. */
+    uint32_t (*pipeline_register)(void* user, const NebulaPipelineDesc* desc, const NebulaLayoutInput* inputs);
     /* The frame's list. The renderer owns it until it sets `released`; nothing waits. */
     void (*submit_frame)(void* user, NebulaFrameList* list);
     /* `channel`'s latest finished probes with their values, at most `capacity`; how many (0 before any has finished).
        Never waits for the GPU. */
     uint32_t (*probe_results)(void* user, uint32_t channel, NebulaScreenProbe* probes, uint32_t capacity);
+    /* The players input_read serves (0 to this - 1), fixed for the session. */
+    uint32_t (*input_players)(void* user);
 } NebulaHostServices;
 
 
@@ -921,6 +923,11 @@ enum {
     NEBULA_MOVIE_NONE = -1,
     NEBULA_MOVIE_OPENING = -2,
 };
+
+/* The movie quad's planes (movie_frame), ids no image has: images number from 1 up, render targets have the top bit. */
+#define NEBULA_TEXTURE_MOVIE_Y 0x7FFFFF00u
+#define NEBULA_TEXTURE_MOVIE_U 0x7FFFFF01u
+#define NEBULA_TEXTURE_MOVIE_V 0x7FFFFF02u
 
 /* Native equivalents of mods' code patches: the host's mods
    layer recognises each by its exact bytes for this disc and the game asks code_patch for it. */

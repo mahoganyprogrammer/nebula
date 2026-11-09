@@ -23,7 +23,7 @@ class Model;
 class ModelData;
 class PlayerModel;
 class SoundAudible;
-class JUTTexture;
+class GameTexture;
 class JetTurtleShadow;
 class MarioAnimator;
 class MarioConst;
@@ -47,7 +47,11 @@ struct ResTIMG;
 struct SmokeEffectEntry;
 class MatrixControl;
 
-enum SPECIAL_STATUS_FOR_CAMERA { CASE_0, CASE_1 };
+// What CameraTargetObj::isCameraStateOn asks the player.
+enum SPECIAL_STATUS_FOR_CAMERA {
+    CameraStatus_FireDance,
+    CameraStatus_HeliJump,  // the helicopter jump off a trampled sensor of type 0x1F (jump kind 11)
+};
 
 enum PlayerMode {
     PlayerMode_Normal,
@@ -58,17 +62,10 @@ enum PlayerMode {
     PlayerMode_Hopper,
     PlayerMode_Teresa,
     PlayerMode_Foo,
-    PlayerMode_8,
-    PlayerMode_Tornado
+    PlayerMode_Tornado = 9,  // no mode is 8
 };
 
-template < int SIZE, class T, class U >
-class AudGenericAudible;
-class SoundDopplerChannel;
-class SoundDopplerAbsPos;
-typedef AudGenericAudible< 4, SoundDopplerChannel, SoundDopplerAbsPos > AudGeneric;
-
-extern bool gIsLuigi;  // (cc68 - 10000)(r13)
+extern bool gIsLuigi;  // set by MarioActor::init2 from MR::isPlayerLuigi
 
 class MarioActor : public LiveActor {
 public:
@@ -177,7 +174,6 @@ public:
     void initEffect();
     void initMaterialEffect();
     void initCommonEffect();
-    void addSoundObjHolder();
 
     void initMember();
 
@@ -230,7 +226,6 @@ public:
     bool checkEffectWaterColumn();
 
     void bodyClap();
-    bool selectWaterInOut(const char*) const;
     void playEffectRT(const char*, const Vec3f&, const Vec3f&);
     void playEffectRTZ(const char*, const Vec3f&, const Vec3f&);
     void playEffectRTW(const char*, const Vec3f&, const Vec3f&);
@@ -537,11 +532,6 @@ public:
         return mMario->mPrevDrawStates;
     }
 
-    // Only used in isSleeping() to make it match
-    inline bool IsMarioAnimationRun(const char* pAnimName) const {
-        return mMario->isAnimationRun(pAnimName);
-    }
-
     inline bool IsMarioSwimming() const {
         return mMario->isSwimming();
     }
@@ -551,10 +541,10 @@ public:
     }
 
     inline const bool isBeeMarioOnFur() const {
-        return mMario->getMovementStates().onGround && strcmp("Fur", MR::getWallCodeString(mMario->getGroundPolygon())) == 0 && mBeeWallWalk == 0;
+        return mMario->getMovementStates().onGround && MR::getWallCodeIndex(mMario->getGroundPolygon()) == CollisionWallCode_Fur && mBeeWallWalk == 0;
     }
 
-    inline const bool is481or482On() const {
+    inline const bool isHidden() const {
         return mHidden || mHiddenByDemo;
     }
 
@@ -571,7 +561,8 @@ public:
 
     u8 mInitializing;  // true from init2's start to its end (calcCenterPos waits)
     MarioModelTint mAlphaTint;
-    MarioModelTint mGhostTints[0x40];
+    static const u32 cBlurPoseNum = 8;  // afterimages in the blur trail, one taken every 3 updates; also its tint levels
+    MarioModelTint mGhostTints[cBlurPoseNum * cBlurPoseNum];  // [age][pose slot] (createRainbowMesh)
     MarioModelTint mLightTint;
     u8 mFpViewHidden;  // the first-person view hides the model (calc1stPersonView)
     f32 mFogRate;  // the fog's strength for updateLightList (calcFogLighting)
@@ -665,7 +656,6 @@ public:
     bool mRemoteDemo;  // a remote demo drives him (pad reads stop; readyRemoteDemo)
     Vec3f mRushEndFront;  // the front a rush ends facing
     u16 mRushEndFrontMode;  // 0 keep the base's, 1 keep the up, more: the turn's frames
-    u16 mModelSet;  // a bit per model made (initDrawAndModel and the form inits)
     u16 mPlayerMode;
     u16 mPrevPlayerMode;  // the form before the morph (setPlayerMode)
     u16 mMorphTimer;  // frames left of the morph flash
@@ -680,8 +670,8 @@ public:
     bool mPolygonAttackDone;  // attackOrPushPolygons hit this frame
     Mtx34f mBaseMtx;  // the base matrix as set (calcAndSetBaseMtx) (?)
     HitSensor* mTakenSensor;  // the sensor he holds
-    HitSensor* mTakeSensors[4];   // what he holds, mTakeCount of them
-    Vec3f mTakeRotations[4];      // each one's rotation less his
+    MR::GrowTable< HitSensor*, 4 > mTakeSensors;  // what he holds, mTakeCount of them
+    MR::GrowTable< Vec3f, 4 > mTakeRotations;     // each one's rotation less his
     u32 mTakeCount;
     HitSensor* mTakeCandidate;    // the best sensor to take
     HitSensor* mThrowTarget;
@@ -727,8 +717,8 @@ public:
     u16 mSpinTicoTimer;  // the spin's Tico effect frames
     u16 mSpinStarTimer;  // the fairy star's frames after a spin
     u16 mSpinStarEndTimer;  // frames until the spin star effect ends
-    HitSensor* mAirPunchHits[8];  // sensors the air punch hit
-    u8 mAirPunchHitCount;  // entries in mAirPunchHits
+    MR::GrowTable< HitSensor*, 8 > mAirPunchHits;  // sensors the air punch hit
+    u32 mAirPunchHitCount;  // entries in mAirPunchHits
     Vec3f mControlVelocity;  // the velocity at control (updateBindRatio)
     f32 mBindRatio;  // how far the up follows the ground or wall normal
     u8 mTrampleJumpStep;  // the trample jump's height step (0-2)
@@ -789,11 +779,11 @@ public:
     bool mPreWipeOn;  // the pre-wipe fill is up (MarioAccess): the model is not drawn
     u16 mPreWipeTimer;  // the pre-wipe fill's frames: its alpha
     u8 mBlurState;  // the model blur: 0 off, 1 asked, 2 on, 3-5 fading out (calcViewBlurModel)
-    ModelPose mBlurPoses[2][8];
+    ModelPose mBlurPoses[2][cBlurPoseNum];
     Mtx34f mPrevViewMtx;  // last frame's camera view (drawModelBlur)
     Mtx34f mViewMtx;  // this frame's camera view
     u16 mBlurPoseSet;  // the blur pose set drawn (0 or 1)
-    u16 mBlurPoseIndex;  // the next blur pose (0-7)
+    u16 mBlurPoseIndex;  // the next blur pose (below cBlurPoseNum)
     Vec3f mReflectPos;  // the reflection model's position (calcScreenBoxRange)
     Vec2f mScreenBoxMin;   // the model's box on the screen (calcScreenBoxRange)
     Vec2f mScreenBoxMax;
@@ -812,8 +802,8 @@ public:
     u8 mBlinkFrame;  // frames left of the blink
     u16 mBlinkTimer;  // frames until the next blink
     Clip* mEyeRes;
-    JUTTexture* mBlurTexture; // the full-screen blur's target
-    JUTTexture* mMaskTextures[2];  // the mask's two buffers
+    GameTexture* mBlurTexture; // the full-screen blur's target
+    GameTexture* mMaskTextures[2];  // the mask's two buffers
     u16 mMaskIndex;  // the mask texture drawn (0 or 1)
     MarioNullBck* mNullAnimation;
     bool mAnimationFrozen;  // animation changes are ignored (game over, press, freeze, talk, demo)

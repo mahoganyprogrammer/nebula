@@ -5,11 +5,10 @@
 class CameraBehind : public Camera {
 public:
     CameraBehind(const char* pName = "後方カメラ");
-    virtual ~CameraBehind();
 
     virtual void reset();
     virtual CameraTargetObj* calc();
-    virtual CamTranslatorBase* createTranslator();
+    virtual void setParamFromChunk(const CameraParamChunk*);
 
     void calcPosAndUp(f32 accel);
 

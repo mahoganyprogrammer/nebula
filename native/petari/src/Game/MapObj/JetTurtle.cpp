@@ -53,6 +53,9 @@ void JetTurtle::init2(const TableIter& rIter, bool isGolden) {
         MR::getPlacementArg1NoInit(rIter, &speedType);
 
         speedType++;
+        if (speedType < 0 || speedType >= ARRAY_SIZE(::sResetStep)) {
+            speedType = 0;
+        }
     } else {
         speedType = 0;
     }
@@ -870,10 +873,4 @@ void GoldenTurtle::exeThrowing() {
 void GoldenTurtle::reset(u32 reason) {
     JetTurtle::reset(reason);
     getSensor("body")->setType(ATYPE_JET_TURTLE_SLOW);
-}
-
-JetTurtle::~JetTurtle() {
-}
-
-GoldenTurtle::~GoldenTurtle() {
 }

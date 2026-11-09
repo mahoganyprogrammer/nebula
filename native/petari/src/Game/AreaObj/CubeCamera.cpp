@@ -2,8 +2,9 @@
 #include "Game/AreaObj/AreaObj.hpp"
 #include "Game/Util/ObjUtil.hpp"
 #include "Game/Util/SceneUtil.hpp"
+#include "Game/Util/StringUtil.hpp"
 
-#include <cstring>
+#include "Game/Util/StringUtil.hpp"
 
 CubeCameraArea::CubeCameraArea(int formType, const char* pName) : AreaObj(formType, pName), mCategoryMask(), mZoneID() {
 }
@@ -16,7 +17,7 @@ void CubeCameraArea::init(const TableIter& rIter) {
     const char* valid;
 
     if (rIter.getValue("Validity", &valid)) {
-        if (strcmp(valid, "Invalid") == 0) {
+        if (MR::isEqualString(valid, "Invalid")) {
             mIsValid = false;
         }
     }
@@ -76,7 +77,7 @@ s32 CubeCameraArea::getCategoryArg() const {
     return mObjArg3;
 }
 
-CubeCameraMgr::CubeCameraMgr(s32 maxNum, const char* pName) : AreaObjMgr(maxNum, pName) {
+CubeCameraMgr::CubeCameraMgr(s32 firstCapacity, const char* pName) : AreaObjMgr(firstCapacity, pName) {
     CubeCameraArea::sCubeCategory = 1;
 }
 

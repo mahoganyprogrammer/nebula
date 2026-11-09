@@ -3,7 +3,8 @@
 #include "Game/Render/FrameList.hpp"
 #include "Game/Util/Color.hpp"
 #include <NebulaGpu.h>
-#include <JSystem/JUtility/JUTTexture.hpp>
+#include "Game/Render/GameTexture.hpp"
+#include "Game/System/NebulaArena.hpp"
 #include <cstddef>
 #include <string.h>
 
@@ -134,9 +135,9 @@ struct VertexCorner {
 template < class T >
 struct VertexLayout;
 
-#define NEBULA_INPUT3(semantic, type, field) {semantic, 0, 0, 0, static_cast< u32 >(offsetof(type, field)), static_cast< u32 >(sizeof(type))}
-#define NEBULA_INPUT2(semantic, type, field) {semantic, 0, 1, 0, static_cast< u32 >(offsetof(type, field)), static_cast< u32 >(sizeof(type))}
-#define NEBULA_INPUTC(semantic, type, field) {semantic, 0, 2, 0, static_cast< u32 >(offsetof(type, field)), static_cast< u32 >(sizeof(type))}
+#define NEBULA_INPUT3(semantic, type, field) {semantic, 0, 0, static_cast< u32 >(offsetof(type, field)), static_cast< u32 >(sizeof(type))}
+#define NEBULA_INPUT2(semantic, type, field) {semantic, 0, 1, static_cast< u32 >(offsetof(type, field)), static_cast< u32 >(sizeof(type))}
+#define NEBULA_INPUTC(semantic, type, field) {semantic, 0, 2, static_cast< u32 >(offsetof(type, field)), static_cast< u32 >(sizeof(type))}
 
 template <>
 struct VertexLayout< VertexP > {
@@ -375,6 +376,42 @@ private:
     u32 mCount, mRoom;
 };
 
+// A site material's textures by slot: a few inline, more as slots are named; every entry zero until set.
+class DrawTextures {
+public:
+    DrawTextures() : mData(mInline), mRoom(cInline) {
+        memset(mInline, 0, sizeof(mInline));
+    }
+    DrawTextures(const DrawTextures& rOther) : DrawTextures() { *this = rOther; }
+    ~DrawTextures() { if (mData != mInline) { delete[] mData; } }
+    DrawTextures& operator=(const DrawTextures& rOther) {
+        if (this != &rOther) {
+            ensure(rOther.mRoom);
+            memcpy(mData, rOther.mData, rOther.mRoom * sizeof(NebulaFrameTexture));
+        }
+        return *this;
+    }
+    // Room for `count` slots, the new ones zero.
+    void ensure(u32 count) {
+        if (count <= mRoom) { return; }
+        const u32 room = count > mRoom * 2 ? count : mRoom * 2;
+        NebulaFrameTexture* pNew = new NebulaFrameTexture[room];
+        memset(pNew, 0, room * sizeof(NebulaFrameTexture));
+        memcpy(pNew, mData, mRoom * sizeof(NebulaFrameTexture));
+        if (mData != mInline) { delete[] mData; }
+        mData = pNew; mRoom = room;
+    }
+    void clear() { memset(mData, 0, mRoom * sizeof(NebulaFrameTexture)); }
+    NebulaFrameTexture& operator[](u32 slot) { ensure(slot + 1); return mData[slot]; }
+    const NebulaFrameTexture& operator[](u32 slot) const { return mData[slot]; }
+    operator const NebulaFrameTexture*() const { return mData; }
+private:
+    static const u32 cInline = 4;
+    NebulaFrameTexture mInline[cInline];
+    NebulaFrameTexture* mData;
+    u32 mRoom;
+};
+
 struct SiteMaterial {
     enum Blend { BLEND_OPAQUE, BLEND_ALPHA, BLEND_ADD_ALPHA, BLEND_SUBTRACT, BLEND_ADD };
 
@@ -387,8 +424,10 @@ struct SiteMaterial {
 
     // Coordinate matrix `index` among the constants the shader declares from row `first` (three rows each).
     void setMatrix(u32 first, u32 index, const f32 (*pMtx)[4]);
-    void setTexture(u32 slot, const JUTTexture* pTexture);
+    void setTexture(u32 slot, const GameTexture* pTexture);
     void setTexture(u32 slot, const SiteTexture& rTexture);
+    // A texture the host makes (`id`), sampled as `rSampling` says (its image is not used).
+    void setTextureId(u32 slot, u32 id, const SiteTexture& rSampling);
     // Constants from float `at`: a colour as 0-1 values.
     void setColor(u32 at, u8 r, u8 g, u8 b, u8 a);
     void setDepth(bool test, u8 func, bool write) {
@@ -410,7 +449,7 @@ struct SiteMaterial {
     DrawConstants constants;
     u32 mRowCount;   // rows of four floats the shader declares, or more for its coordinate matrices
     DrawMatrixRows mCoordRows;
-    NebulaFrameTexture mTextures[NEBULA_MATERIAL_SLOTS];
+    DrawTextures mTextures;
     u32 mTextureCount;
 };
 
@@ -503,6 +542,13 @@ public:
         return static_cast< T* >(begin(primitive, count, sizeof(T), VertexLayout< T >::inputs(), VertexLayout< T >::count));
     }
 
+    // Room for `count` vertices of `stride` bytes each, read through `inputCount` inputs that stay valid for the frame:
+    // for vertices whose layout is only known as the site runs.
+    void* vertices(NebulaPrimitive primitive, u32 count, u32 stride, const NebulaLayoutInput* pInputs, u32 inputCount) {
+        finish();
+        return begin(primitive, count, stride, pInputs, inputCount);
+    }
+
     // Writes nothing and draws what was written so far.
     void finish();
 
@@ -545,12 +591,14 @@ private:
     bool mOpen;
 };
 
-// Geometry a site builds once and draws for a long time: handed to the renderer, which keeps its own copy. A scene's
-// meshes go with its memory (ModelDataList::forget).
-class SiteMeshData {
+// Geometry a site builds once and draws for a long time: handed to the renderer, which keeps its own copy. The arena
+// holding the mesh destroys it, if its owner has not, and the renderer's copy goes with it.
+class SiteMeshData : public ArenaOwned {
 public:
     SiteMeshData();
-    ~SiteMeshData();
+    ~SiteMeshData() override;
+    SiteMeshData(const SiteMeshData&) = delete;
+    SiteMeshData& operator=(const SiteMeshData&) = delete;
     // Hands the geometry written over and frees the writing room.
     void send();
 
@@ -561,9 +609,6 @@ protected:
     void drawData(TypedDraw& rDraw, const NebulaLayoutInput* pInputs, u32 inputCount, u32 flags) const;
 
 private:
-    friend void forgetSiteMeshes(const void* pStart, const void* pEnd);
-    void unlink();
-
     u32 mId;
     u32 mIndexCount;
     u32 mStride;
@@ -571,11 +616,7 @@ private:
     u32 mWritten;
     u8* mVertices;
     u32* mIndices;
-    SiteMeshData* mNextLive;
 };
-
-// Frees the meshes lying in the memory given.
-void forgetSiteMeshes(const void* pStart, const void* pEnd);
 
 template < class T >
 class SiteMesh : public SiteMeshData {

@@ -11,8 +11,12 @@ GameEventFlagChecker::GameEventFlagChecker(GameDataHolder* pHolder) : mDataHolde
     mFlagStorage = new GameEventFlagStorage();
 }
 
+// A flag the table lacks (a mod's comet or galaxy name) can't be on and is never set.
 bool GameEventFlagChecker::canOn(const char* pFlagName) const {
     const GameEventFlag* pFlag = GameEventFlagTable::findFlag(pFlagName);
+    if (pFlag == nullptr) {
+        return false;
+    }
 
     switch (pFlag->mType) {
     case GameEventFlag::Type_None:
@@ -66,6 +70,9 @@ bool GameEventFlagChecker::canOn(const char* pFlagName) const {
 }
 bool GameEventFlagChecker::isOn(const char* pFlagName) const {
     const GameEventFlag* pFlag = GameEventFlagTable::findFlag(pFlagName);
+    if (pFlag == nullptr) {
+        return false;
+    }
 
     if ((pFlag->mSaveFlag & 0x1) != 0) {
         return canOn(pFlagName);
@@ -138,11 +145,11 @@ bool GameEventFlagChecker::isOnGalaxy(const char* pGalaxyName) const {
 }
 
 bool GameEventFlagChecker::isOnGalaxyDepended(const char* pGalaxyName) const {
-    const char* galaxyDependedFlags[3];
+    MR::InlineVector< const char*, 3 > galaxyDependedFlags;
+    GameEventFlagTable::getGalaxyDependedFlags(&galaxyDependedFlags, pGalaxyName);
 
-    s32 length = GameEventFlagTable::getGalaxyDependedFlags(galaxyDependedFlags, ARRAY_SIZE(galaxyDependedFlags), pGalaxyName);
-    for (s32 i = 0; i < length; i++) {
-        if (!isOn(galaxyDependedFlags[i])) {
+    for (const char* const* pFlag = galaxyDependedFlags.begin(); pFlag != galaxyDependedFlags.end(); pFlag++) {
+        if (!isOn(*pFlag)) {
             return false;
         }
     }

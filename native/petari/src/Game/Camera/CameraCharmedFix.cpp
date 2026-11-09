@@ -1,5 +1,5 @@
 #include "Game/Camera/CameraCharmedFix.hpp"
-#include "Game/Camera/CamTranslatorCharmedFix.hpp"
+#include "Game/Camera/CameraParamChunk.hpp"
 #include "Game/Camera/CameraLocalUtil.hpp"
 #include "Game/Camera/CameraTargetObj.hpp"
 #include "Game/Util/MathUtil.hpp"
@@ -19,11 +19,11 @@ CameraTargetObj* CameraCharmedFix::calc() {
 
     const Pos3f& zoneMtx = mZoneMatrix;
     Vec3f watchPoint;
-    CameraLocalUtil::makeWatchPoint(&watchPoint, this, CameraLocalUtil::getTarget(this), 0.1f / 15.0f);
+    CameraLocalUtil::makeWatchPoint(&watchPoint, this, target, 0.1f / 15.0f);
 
     Vec3f pos = mBasePos;
     zoneMtx.mult(pos, pos);
-    Vec3f front = CameraLocalUtil::getTarget(this)->getPosition() - pos;
+    Vec3f front = target->getPosition() - pos;
     if (MR::isNearZero(front)) {
         return target;
     }
@@ -40,9 +40,8 @@ CameraTargetObj* CameraCharmedFix::calc() {
     up.cross(front, side);
 
     Pos3f mtx;
-    mtx.identity();
     mtx.setXYZDir(side, up, front);
-    mtx.setTrans(CameraLocalUtil::getTarget(this)->getPosition());
+    mtx.setTrans(target->getPosition());
 
     Vec3f watchPos = mWPoint;
     mtx.mult(watchPos, watchPos);
@@ -50,11 +49,12 @@ CameraTargetObj* CameraCharmedFix::calc() {
     CameraLocalUtil::setPos(this, watchPos);
     CameraLocalUtil::setWatchPos(this, watchPoint);
     CameraLocalUtil::setUpVec(this, up);
-    CameraLocalUtil::setWatchUpVec(this, CameraLocalUtil::getTarget(this)->getUpVec());
+    CameraLocalUtil::setWatchUpVec(this, target->getUpVec());
 
     return target;
 }
 
-CamTranslatorBase* CameraCharmedFix::createTranslator() {
-    return new CamTranslatorCharmedFix(this);
+void CameraCharmedFix::setParamFromChunk(const CameraParamChunk* pChunk) {
+    CameraGeneralParam* general = pChunk->mGeneralParam;
+    setParam(general->mAxis, CameraLocalUtil::getNormalizedOr(general->mUp, Vec3f(0.0f, 1.0f, 0.0f)), general->mWPoint);
 }

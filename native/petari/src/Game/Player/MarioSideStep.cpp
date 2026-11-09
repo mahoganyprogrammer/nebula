@@ -42,10 +42,10 @@ bool Mario::doSideStep() {
     if (getCurrentStatus() == MarioStatus_SideStep) {
         return false;
     }
-    if (checkWallCode("NotSideStep", false)) {
+    if (checkWallCode(CollisionWallCode_NotSideStep, false)) {
         return false;
     }
-    if (checkWallCode("NoAction", false)) {
+    if (checkWallCode(CollisionWallCode_NoAction, false)) {
         return false;
     }
     if (mActor->mTakeCount) {
@@ -94,7 +94,7 @@ bool MarioSideStep::start() {
     if (!isAnimationRun("壁押し")) {
         playSound("声壁押し");
     }
-    changeAnimation("壁押し", 0u);
+    changeAnimation("壁押し", MarioIndexedAnime_WallPush);
     mActor->setBlendMtxTimer(10);
     return true;
 }
@@ -141,7 +141,7 @@ bool MarioSideStep::update() {
             if (!isAnimationRun("壁押し")) {
                 playSound("声壁押し");
             }
-            changeAnimation("壁押し", 0u);
+            changeAnimation("壁押し", MarioIndexedAnime_WallPush);
         } else if (forward > 0.0f) {
             if (forward > 0.707f) {
                 getPlayer()->setFrontVecKeepUp(getPlayer()->getWallNorm());

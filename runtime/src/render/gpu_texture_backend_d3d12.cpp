@@ -2,7 +2,9 @@
 // TextureStore's D3D12 side (gpu_texture_backend.h): the view heap, upload staging, placed textures and upload copies.
 
 #include "galaxy/render/gpu_texture_backend.h"
+#include "barriers_d3d12.h"
 
+#include <algorithm>
 #include <bit>
 #include <sstream>
 #include <stdexcept>
@@ -51,7 +53,31 @@ bool TextureBackend::initialize(gpu::Device* device, std::uint32_t view_capacity
     null_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     null_desc.Texture2D.MipLevels = 1u;
     device->CreateShaderResourceView(nullptr, &null_desc, null_srv_);
+    // Every view slot holds the null view from the start, so a copy never reads an undefined descriptor.
+    fill_null(srv_cpu_base_, view_capacity);
     return true;
+}
+
+void TextureBackend::fill_null(D3D12_CPU_DESCRIPTOR_HANDLE first, std::uint32_t count) {
+    if (count == 0u) {
+        return;
+    }
+    device_->CopyDescriptorsSimple(1u, first, null_srv_, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    for (std::uint32_t done = 1u; done < count;) {
+        const std::uint32_t run = std::min(done, count - done);
+        D3D12_CPU_DESCRIPTOR_HANDLE to = first;
+        to.ptr += static_cast<SIZE_T>(done) * srv_stride_;
+        device_->CopyDescriptorsSimple(run, to, first, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        done += run;
+    }
+}
+
+void TextureBackend::release_view(std::uint32_t index) {
+    if (index >= views_made_) {
+        return;
+    }
+    device_->CopyDescriptorsSimple(1u, srv_cpu(index), null_srv_, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    publish_view(index);
 }
 
 void TextureBackend::shutdown() {
@@ -62,10 +88,14 @@ void TextureBackend::shutdown() {
     srv_cpu_base_ = {};
     srv_stride_ = 0u;
     null_srv_ = {};
+    mirror_ = {};
+    mirror_count_ = 0u;
+    views_made_ = 0u;
     device_.Reset();
 }
 
 void TextureBackend::ensure_view(std::uint32_t index) {
+    views_made_ = std::max(views_made_, index + 1u);
     const std::size_t page = index / views_per_page_;
     while (page > srv_pages_.size()) {
         D3D12_DESCRIPTOR_HEAP_DESC desc{};
@@ -73,6 +103,7 @@ void TextureBackend::ensure_view(std::uint32_t index) {
         desc.NumDescriptors = views_per_page_;
         Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> next;
         d3d_check(device_->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&next)), "create texture view page");
+        fill_null(next->GetCPUDescriptorHandleForHeapStart(), views_per_page_);
         srv_pages_.push_back(std::move(next));
     }
 }
@@ -100,6 +131,44 @@ void TextureBackend::write_view(std::uint32_t index, ID3D12Resource* texture, un
     ensure_view(index);
     const auto cpu = srv_cpu(index);
     device_->CreateShaderResourceView(texture, &srv_desc, cpu);
+    publish_view(index);
+}
+
+void TextureBackend::mirror_into(D3D12_CPU_DESCRIPTOR_HANDLE slots, std::uint32_t count, GrowFn grow, void* owner) {
+    if (views_made_ > count) {
+        throw std::runtime_error("[textures] more texture views than the shader-visible heap holds");
+    }
+    mirror_ = slots;
+    mirror_count_ = count;
+    mirror_grow_ = grow;
+    mirror_owner_ = owner;
+    // The views made so far, one copy per page of the CPU views.
+    for (std::uint32_t first = 0; first < views_made_;) {
+        const std::uint32_t in_page = views_per_page_ - first % views_per_page_;
+        const std::uint32_t run = std::min(in_page, views_made_ - first);
+        D3D12_CPU_DESCRIPTOR_HANDLE slot = mirror_;
+        slot.ptr += static_cast<SIZE_T>(first) * srv_stride_;
+        device_->CopyDescriptorsSimple(run, slot, srv_cpu(first), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        first += run;
+    }
+}
+
+void TextureBackend::publish_view(std::uint32_t index) {
+    if (mirror_.ptr == 0u) {
+        return;
+    }
+    if (index >= mirror_count_) {
+        // A larger heap that already holds the earlier views (mirror_into); this one is copied below.
+        if (mirror_grow_ != nullptr) {
+            mirror_grow_(mirror_owner_, index);
+        }
+        if (index >= mirror_count_) {
+            throw std::runtime_error("[textures] more texture views than the shader-visible heap holds");
+        }
+    }
+    D3D12_CPU_DESCRIPTOR_HANDLE slot = mirror_;
+    slot.ptr += static_cast<SIZE_T>(index) * srv_stride_;
+    device_->CopyDescriptorsSimple(1u, slot, srv_cpu(index), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 }
 
 TextureBackend::UploadChunk TextureBackend::create_upload_chunk(std::uint64_t size) {
@@ -154,7 +223,7 @@ gpu::TextureRef TextureBackend::create_texture(
     rd.Layout           = D3D12_TEXTURE_LAYOUT_UNKNOWN;
     gpu::TextureRef resource;
     d3d_check(texture_heap_.create(
-        rd, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, resource, allocation_bytes),
+        rd, gpu::Use::CopyDest, nullptr, resource, allocation_bytes),
         "create default texture");
     return resource;
 }
@@ -179,13 +248,9 @@ void TextureBackend::record_upload(ID3D12Resource* texture, bool reused, const U
                                    const std::uint64_t* offsets, const std::uint32_t* pitches) {
     if (reused) {
         // A retired texture rests in the shader-resource state; the copies need copy-destination.
-        D3D12_RESOURCE_BARRIER bar{};
-        bar.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        bar.Transition.pResource   = texture;
-        bar.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-        bar.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        bar.Transition.StateAfter  = D3D12_RESOURCE_STATE_COPY_DEST;
-        upload_list_->ResourceBarrier(1, &bar);
+        BarriersD3D12 uses{upload_list_};
+        uses.texture(texture, gpu::Use::PixelRead, gpu::Use::CopyDest);
+        uses.issue();
     }
     for (unsigned l = 0; l < levels; ++l) {
         const std::uint32_t lw = std::max<std::uint32_t>(1u, width >> l);
@@ -210,13 +275,9 @@ void TextureBackend::record_upload(ID3D12Resource* texture, bool reused, const U
 
         upload_list_->CopyTextureRegion(&copy_dst, 0, 0, 0, &copy_src, nullptr);
     }
-    D3D12_RESOURCE_BARRIER bar{};
-    bar.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    bar.Transition.pResource   = texture;
-    bar.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    bar.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-    bar.Transition.StateAfter  = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-    upload_list_->ResourceBarrier(1, &bar);
+    BarriersD3D12 uses{upload_list_};
+    uses.texture(texture, gpu::Use::CopyDest, gpu::Use::PixelRead);
+    uses.issue();
 }
 
 }  // namespace galaxy::render

@@ -10,7 +10,7 @@
 #include "Game/Effect/SingleEmitter.hpp"
 #include "Game/Scene/SceneObjHolder.hpp"
 #include "Game/Util/HashUtil.hpp"
-#include "Game/Util/MemoryUtil.hpp"
+#include "Game/System/NebulaArena.hpp"
 #include "Game/Util/SceneUtil.hpp"
 #include "Game/Util/ScreenUtil.hpp"
 #include "Game/Particle/ParticleCore.hpp"
@@ -50,6 +50,7 @@ void EffectSystem::forceDeleteEmitter(ParticleEmitter* pEmitter) const {
 
         mEmitterManager->forceDeleteEmitter(pEmitter->mEmitter);
         pEmitter->invalidate();
+        pEmitter->mHolder->released(pEmitter);
     }
 }
 
@@ -61,6 +62,7 @@ void EffectSystem::forceDeleteSingleEmitter(SingleEmitter* pSingleEmitter) const
 
         mEmitterManager->forceDeleteEmitter(pEmitter->mEmitter);
         pEmitter->invalidate();
+        pEmitter->mHolder->released(pEmitter);
     }
 }
 
@@ -95,11 +97,8 @@ namespace MR {
     }
 };  // namespace MR
 
-EffectSystem::~EffectSystem() {
-}
-
 void EffectSystem::entry(ParticleResourceHolder* pResourceHolder, u32 emitterCount) {
-    mEmitterManager = new EmitterManager(emitterCount, MR::getCurrentHeap(), 9, 1);
+    mEmitterManager = new EmitterManager(emitterCount, NebulaArena::current(), 9, 1);
     mEmitterManager->entryResourceManager(pResourceHolder->mResourceMgr, 0);
     startScene();
     mEmitterHolder = new ParticleEmitterHolder(this, emitterCount);

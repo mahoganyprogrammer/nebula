@@ -193,7 +193,7 @@ void Kanina::appearItemPunch() {
 
 void Kanina::appearItemTrample() {
     if (mType == KaninaType_Red) {
-        // most likely a copy-paste error from appearItemPunch
+        // As many coins as a punch gives star pieces.
         MR::appearCoinPop(this, mPosition, ::sStarPieceNum);
     } else if (mType == KaninaType_Blue) {
         MR::appearKinokoOneUpPop(mKinokoOneUp, getBaseMtx(), ::sKinokoOneUpShootSpeed);
@@ -373,7 +373,6 @@ bool Kanina::receiveFireBall(HitSensor* pSender, HitSensor* pReceiver) {
 
 void Kanina::doDamageFireBall(HitSensor* pSender, HitSensor* pReceiver) {
     MR::setVelocityBlowAttack(this, pSender, pReceiver, ::sPunchDamageVelocity, ::sPunchUpperVec, 4);
-    MR::isNearZero(mVelocity);
     Vec3f vec;
     MR::vecKillElement(mVelocity, -mGravity, &vec);
     MR::normalizeOrZero(&vec);
@@ -980,7 +979,4 @@ void Kanina::exePointing() {
 
 void Kanina::endPointing() {
     MR::tryDeleteEffect(this, "Touch");
-}
-
-Kanina::~Kanina() {
 }

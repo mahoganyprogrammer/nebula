@@ -8,9 +8,6 @@
 #include "Game/Util/ObjUtil.hpp"
 #include <nebula_geometry.hpp>
 
-MirrorActor::~MirrorActor() {
-}
-
 MirrorActor::MirrorActor(LiveActor* pActor, const char* pName, const char* pArcName) : LiveActor(pName), mHost(pActor), mIsDisconnected() {
     initModelManagerWithAnm(pArcName, nullptr, false);
 }
@@ -64,11 +61,7 @@ void MirrorActor::calcViewAndEntry() {
 }
 
 bool MirrorActor::isHostInTheOtherSideOfMirror() const {
-    if (MR::isExistMirrorCamera()) {
-        return MR::getDistanceToMirror(getHostCenterPos()) < 0.0f;
-    }
-
-    return false;
+    return MR::isExistMirrorCamera() && MR::getDistanceToMirror(getHostCenterPos()) < 0.0f;
 }
 
 Vec3f MirrorActor::getHostCenterPos() const {

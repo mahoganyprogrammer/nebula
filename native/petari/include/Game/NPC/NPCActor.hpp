@@ -27,7 +27,6 @@ public:
     bool mModel;
     const char* mObjectName;
     bool mMakeActor;
-    bool mHostIO;
     bool mMessage;
     const char* mMessageId;
     Vec3f mMessageOffset;
@@ -93,7 +92,6 @@ public:
     void pushNerve(const Nerve*);
     const Nerve* popAndPushNerve(const Nerve*);
     const Nerve* popNerve();
-    bool tryPullNullNerve();
     bool isEmptyNerve() const;
     bool isScaleAnim() const;
     bool isPointingSe() const;

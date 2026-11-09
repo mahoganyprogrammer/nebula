@@ -1,4 +1,5 @@
 #include "Game/NPC/CometEventExecutorTimeLimit.hpp"
+#include "Game/System/NebulaFrameClock.hpp"
 #include "Game/LiveActor/Nerve.hpp"
 #include "Game/Screen/TimeLimitLayout.hpp"
 #include "Game/Util/DemoUtil.hpp"
@@ -7,7 +8,7 @@
 #include "Game/Util/PlayerUtil.hpp"
 
 namespace {
-    static const s32 sCometTimeLimitDefault = 1800;
+    const s32 sCometTimeLimitDefault = 1800;
 };  // namespace
 
 namespace NrvCometEventExecutorTimeLimit {
@@ -54,9 +55,5 @@ void CometEventExecutorTimeLimit::exeStartEvent() {
 }
 
 u32 CometEventExecutorTimeLimit::getTimeLimit() const {
-    if (mTimeLimit != 0) {
-        return mTimeLimit * 60;
-    }
-
-    return ::sCometTimeLimitDefault * 60;
+    return NebulaFrameClock::stepsOfSeconds(mTimeLimit != 0 ? mTimeLimit : ::sCometTimeLimitDefault);
 }

@@ -76,7 +76,7 @@ namespace NrvScenarioSelectLayout {
 ScenarioSelectLayout::ScenarioSelectLayout(EffectSystem* pEffectSystem, const CameraContext* pCameraContext)
     : LayoutActor("シナリオ選択レイアウト", true), mSelectedScenarioNo(-1), mIsDecided(), mStar(), mScenarioSky(), mEffectSystem(pEffectSystem),
       mCameraContext(pCameraContext), mNewTextFollowPos(0.0f, 0.0f), mNewGreenTextFollowPos(0.0f, 0.0f), mStarTopFollowPos(0.0f, 0.0f), mBackButton(),
-      mMarioPaneFollowPos(0.0f, 0.0f), mMarioPaneName(), _A4(), _A8(-1) {
+      mMarioPaneFollowPos(0.0f, 0.0f), mMarioPaneName(), mTextFadeState(), mTextScenarioNo(-1) {
     mEffectHostMtx.identity();
 
     for (u32 i = 0; i < ARRAY_SIZE(mQuestionPane); i++) {
@@ -127,7 +127,7 @@ void ScenarioSelectLayout::init(const TableIter& rIter) {
     mBackButton = new BackButton("戻るボタン", false);
     mBackButton->initWithoutIter();
 
-    if (!NebulaRegion::isPal()) {
+    if (!NebulaRegion::isEurope()) {
         MR::hidePaneRecursive(this, "CometAppear");
     }
 
@@ -216,7 +216,7 @@ void ScenarioSelectLayout::appear() {
     mScenarioSky->appear();
     MultiScene::startBtk(mScenarioSky, "ScenarioSelectSky");
 
-    if (NebulaRegion::isPal()) {
+    if (NebulaRegion::isEurope()) {
         MR::hidePaneRecursive(this, "CometAppear");
     }
 
@@ -338,11 +338,11 @@ void ScenarioSelectLayout::updateScenarioText() {
     bool isEndAnimStep = isNerve(GET_NERVE(ScenarioSelectLayout, ScenarioSelectLayoutNrvAfterScenarioSelected)) &&
                          MR::isGreaterEqualStep(this, ::cSelectedEndAnimStartStep);
 
-    if (MR::isHiddenPane(this, "Scenario") || (mSelectedScenarioNo > 0 && getSelectedScenarioNo() != _A8)) {
+    if (MR::isHiddenPane(this, "Scenario") || (mSelectedScenarioNo > 0 && getSelectedScenarioNo() != mTextScenarioNo)) {
         if (!isEndAnimStep && mSelectedScenarioNo > 0) {
             fadeInText();
         }
-    } else if (_A4 == 0) {
+    } else if (mTextFadeState == 0) {
         if (MR::isPaneAnimStopped(this, "Scenario", 0) && mSelectedScenarioNo <= 0) {
             fadeOutText();
         }
@@ -354,8 +354,8 @@ void ScenarioSelectLayout::updateScenarioText() {
 void ScenarioSelectLayout::fadeInText() {
     const char* stageName = MR::getCurrentStageName();
 
-    _A4 = 0;
-    _A8 = mSelectedScenarioNo;
+    mTextFadeState = 0;
+    mTextScenarioNo = mSelectedScenarioNo;
 
     MR::setTextBoxMessageRecursive(this, "Scenario", MR::getScenarioNameOnCurrentLanguage(stageName, mSelectedScenarioNo));
     MR::showPaneRecursive(this, "Scenario");
@@ -375,9 +375,9 @@ void ScenarioSelectLayout::fadeInText() {
     MR::startPaneAnim(this, "BestTime", "SelectIn", 0);
 
     if (::isCurrentStageRaceComplete(mSelectedScenarioNo)) {
-        char16_t bestTime[16];
-        MR::makeRaceBestTimeString(bestTime, RaceManagerFunction::getRaceId(stageName, mSelectedScenarioNo));
-        MR::setTextBoxMessageRecursive(this, "ShaTime", bestTime);
+        MR::Text16 bestTime;
+        MR::setTextBoxMessageRecursive(this, "ShaTime",
+                                       MR::makeRaceBestTimeString(bestTime, RaceManagerFunction::getRaceId(stageName, mSelectedScenarioNo)));
     } else {
         MR::setPaneAnimFrameAndStop(this, "BestTime", 0.0f, 0);
         MR::clearTextBoxMessageRecursive(this, "ShaTime");
@@ -386,15 +386,15 @@ void ScenarioSelectLayout::fadeInText() {
 
 void ScenarioSelectLayout::fadeOutText() {
 
-    _A4 = 1;
+    mTextFadeState = 1;
 
     MR::startPaneAnim(this, "Scenario", "SelectOut", 0);
 
-    if (MR::isPlacedCoin(MR::getCurrentStageName(), _A8)) {
+    if (MR::isPlacedCoin(MR::getCurrentStageName(), mTextScenarioNo)) {
         MR::startPaneAnim(this, "BestScore", "SelectOut", 0);
     }
 
-    if (::isCurrentStageRaceComplete(_A8)) {
+    if (::isCurrentStageRaceComplete(mTextScenarioNo)) {
         MR::startPaneAnim(this, "BestTime", "SelectOut", 0);
     }
 }
@@ -564,10 +564,16 @@ void ScenarioSelectLayout::appearPage(s32 page) {
     }
 
     // The page, after the galaxy's name.
-    char16_t text[256];
     const char16_t* pName = MR::getGalaxyNameOnCurrentLanguage(MR::getCurrentStageName());
+    s32 nameLength = 0;
+    while (pName != nullptr && pName[nameLength] != 0) {
+        nameLength++;
+    }
+    // The name, then " < " and up to two digits, "/", up to two digits, " >" and the terminator.
+    MR::Text16 textBuffer;
+    char16_t* const text = textBuffer.room(static_cast< u32 >(nameLength) + 16);
     s32 at = 0;
-    while (pName != nullptr && pName[at] != 0 && at < 200) {
+    while (at < nameLength) {
         text[at] = pName[at];
         at++;
     }

@@ -38,6 +38,9 @@ void MarblePlanet::init(const TableIter& rIter) {
     MR::setClippingFar(this, -1.0f);
     MR::needStageSwitchWriteDead(this, rIter);
     MR::getPlacementArg0NoInit(rIter, &mNumElectrons);
+    if (mNumElectrons < 0) {
+        mNumElectrons = 0;
+    }
     mRemainingElectrons = mNumElectrons;
     initCoreAndElectron();
     MR::declarePowerStar(this);
@@ -325,13 +328,4 @@ void MarblePlanetElectronShadow::calcAndSetBaseMtx() {
     Pos3f baseMtx;
     MR::makeMtxUpNoSupportPos(&baseMtx, up, *mGroundPos);
     MR::setBaseTRMtx(this, baseMtx);
-}
-
-MarblePlanet::~MarblePlanet() {
-}
-
-MarblePlanetElectron::~MarblePlanetElectron() {
-}
-
-MarblePlanetElectronShadow::~MarblePlanetElectronShadow() {
 }

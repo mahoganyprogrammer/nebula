@@ -3,6 +3,7 @@
 #include <nebula_geometry.hpp>
 #include <NebulaGpu.h>
 #include <nebula_math.h>
+#include "Game/Util/NameIndex.hpp"
 
 struct LightInfo {
     NebulaColor8 mColor;
@@ -26,7 +27,6 @@ struct ActorLightInfo {
 struct AreaLightInfo {
     const char* mAreaLightName;
     s32 mInterpolate;
-    bool mFix;
     ActorLightInfo mPlayerLight;
     ActorLightInfo mStrongLight;
     ActorLightInfo mWeakLight;
@@ -50,4 +50,5 @@ public:
     s32 mLightCount;
     AreaLightInfo* mLights;
     LightInfoCoin mCoinLight;
+    MR::NameIndex mIndex;  // area light name -> index in mLights, the first of a name
 };

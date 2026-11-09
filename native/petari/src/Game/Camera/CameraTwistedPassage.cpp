@@ -1,5 +1,5 @@
 #include "Game/Camera/CameraTwistedPassage.hpp"
-#include "Game/Camera/CamTranslatorTwistedPassage.hpp"
+#include "Game/Camera/CameraParamChunk.hpp"
 #include "Game/Camera/CameraDirector.hpp"
 #include "Game/Camera/CameraLocalUtil.hpp"
 #include "Game/Camera/CameraRailHolder.hpp"
@@ -7,7 +7,7 @@
 #include "Game/Util/MathUtil.hpp"
 
 namespace {
-    static const f32 sUpVecBlend = 0.97f;
+    const f32 sUpVecBlend = 0.97f;
 };  // namespace
 
 CameraTwistedPassage::CameraTwistedPassage(const char* pName) : Camera(pName), mRailRider(), mDistMin(500.0f), mDistMax(1300.0f), mIsReversed() {
@@ -28,11 +28,12 @@ CameraTargetObj* CameraTwistedPassage::calc() {
         return nullptr;
     }
 
+    CameraTargetObj* target = CameraLocalUtil::getTarget(this);
     Vec3f watchPos;
-    CameraLocalUtil::makeWatchPoint(&watchPos, this, CameraLocalUtil::getTarget(this), 0.1f / 15.0f);
+    CameraLocalUtil::makeWatchPoint(&watchPos, this, target, 0.1f / 15.0f);
     CameraLocalUtil::setWatchPos(this, watchPos);
 
-    f32 nearCoord = calcNearestCoord(CameraLocalUtil::getTarget(this)->getPosition());
+    f32 nearCoord = calcNearestCoord(target->getPosition());
     f32 coord = mRailRider->mCoord;
 
     if (mIsReversed) {
@@ -74,10 +75,10 @@ CameraTargetObj* CameraTwistedPassage::calc() {
     }
 
     CameraLocalUtil::setPos(this, mRailRider->mCurPos);
-    Vec3f up = CameraLocalUtil::getUpVec(this) * ::sUpVecBlend - CameraLocalUtil::getTarget(this)->getGravityVector() * (1.0f - ::sUpVecBlend);
+    Vec3f up = CameraLocalUtil::getUpVec(this) * ::sUpVecBlend - target->getGravityVector() * (1.0f - ::sUpVecBlend);
     CameraLocalUtil::setUpVecAndWatchUpVec(this, up);
 
-    return CameraLocalUtil::getTarget(this);
+    return target;
 }
 
 void CameraTwistedPassage::setParam(s32 zoneId, s32 railId, f32 distMin, f32 distMax) {
@@ -86,8 +87,8 @@ void CameraTwistedPassage::setParam(s32 zoneId, s32 railId, f32 distMin, f32 dis
     mDistMax = distMax;
 }
 
-CamTranslatorBase* CameraTwistedPassage::createTranslator() {
-    return new CamTranslatorTwistedPassage(this);
+void CameraTwistedPassage::setParamFromChunk(const CameraParamChunk* pChunk) {
+    setParam(pChunk->getZoneID(), pChunk->mGeneralParam->mNum1, pChunk->mGeneralParam->mAxis.x, pChunk->mGeneralParam->mAxis.y);
 }
 
 void CameraTwistedPassage::initStartPos() {

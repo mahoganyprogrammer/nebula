@@ -104,7 +104,7 @@ void BrightInfo::reset() {
     }
 }
 
-BrightObjBase::BrightObjBase() : mInfo(), mBrightCenter(0.0f, 0.0f), mNowCenter(0.0f, 0.0f), mBrightness(), mIsNotVisible(true), mDrawPos(0.0f, 0.0f, 0.0f), mDrawRadius(0.0f) {
+BrightObjBase::BrightObjBase() : mInfo(), mBrightCenter(0.0f, 0.0f), mNowCenter(0.0f, 0.0f), mBrightness(), mDrawPos(0.0f, 0.0f, 0.0f), mDrawRadius(0.0f) {
     MR::addBrightObj(this);
 }
 
@@ -130,12 +130,12 @@ void BrightObjBase::checkVisibilityOfSphere(NebulaScreenProbe* pProbes) {
 
     MR::normalize(&drawDir);
 
-    Vec3f vec110;
-    vec110.cross(camDir, drawDir);
-    camDir.cross(drawDir, vec110);
+    Vec3f side;
+    side.cross(camDir, drawDir);
+    camDir.cross(drawDir, side);
 
     Pos3f mtx;
-    mtx.setTR(vec110, camDir, drawDir, drawPos);
+    mtx.setTR(side, camDir, drawDir, drawPos);
 
     // The first point is the centre: its screen position comes back as the flare's centre whether or not it shows.
     Vec2f center;
@@ -148,24 +148,24 @@ void BrightObjBase::checkVisibilityOfSphere(NebulaScreenProbe* pProbes) {
 
     for (u32 idx = 0; idx < 8; idx++) {
         f32 angle = idx * MR::pi() / 4.0f;
-        Vec3f vec11C(MR::cos(angle), MR::sin(angle), 0.0f);
-        vec11C.scale(mDrawRadius * 0.4f);
+        Vec3f innerProbe(MR::cos(angle), MR::sin(angle), 0.0f);
+        innerProbe.scale(mDrawRadius * 0.4f);
 
-        mtx.mult(vec11C, vec11C);
+        mtx.mult(innerProbe, innerProbe);
 
-        checkVisible(&pProbes[1 + idx], vec11C, rView, rProj);
-        pProbes[1 + idx].user_z = ::calcDepth(vec11C + drawDir * (mDrawRadius * 0.9165f), rView, rProj);
+        checkVisible(&pProbes[1 + idx], innerProbe, rView, rProj);
+        pProbes[1 + idx].user_z = ::calcDepth(innerProbe + drawDir * (mDrawRadius * 0.9165f), rView, rProj);
     }
 
     for (u32 idx = 0; idx < 8; idx++) {
         f32 angle = (idx + 0.5f) * MR::pi() / 4.0f;
-        Vec3f vec128(MR::cos(angle), MR::sin(angle), 0.0f);
-        vec128.scale(mDrawRadius * 0.7f);
+        Vec3f outerProbe(MR::cos(angle), MR::sin(angle), 0.0f);
+        outerProbe.scale(mDrawRadius * 0.7f);
 
-        mtx.mult(vec128, vec128);
+        mtx.mult(outerProbe, outerProbe);
 
-        checkVisible(&pProbes[9 + idx], vec128, rView, rProj);
-        pProbes[9 + idx].user_z = ::calcDepth(vec128 + drawDir * (mDrawRadius * 0.7141f), rView, rProj);
+        checkVisible(&pProbes[9 + idx], outerProbe, rView, rProj);
+        pProbes[9 + idx].user_z = ::calcDepth(outerProbe + drawDir * (mDrawRadius * 0.7141f), rView, rProj);
     }
 }
 
@@ -201,10 +201,8 @@ void BrightObjBase::setResult(const NebulaScreenProbe* pProbes) {
         mBrightCenter.set(Vec2f(objCenter * (1.0f / bright)));
         mBrightness = ratio;
         mNowCenter.set(center);
-        mIsNotVisible = false;
     } else {
         mBrightness = ratio;
-        mIsNotVisible = true;
     }
 
     mInfo.write(mBrightCenter, center, mBrightness);
@@ -266,7 +264,6 @@ void BrightSun::calcBrightInfo(NebulaScreenProbe* pProbes) {
     if (MR::isDead(this)) {
         mInfo.reset();
         mBrightness = 0.0f;
-        mIsNotVisible = true;
         pProbes[0].x = cNoProbes;
         return;
     }
@@ -300,12 +297,6 @@ void BrightSun::controlSunModel() {
     }
 
     mSun->mRotation.set(rotation);
-}
-
-BrightObj::~BrightObj() {
-}
-
-BrightSun::~BrightSun() {
 }
 
 BrightObjBase::~BrightObjBase() {

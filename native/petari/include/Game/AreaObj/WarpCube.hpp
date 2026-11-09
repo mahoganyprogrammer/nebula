@@ -10,8 +10,6 @@ public:
     WarpCube(int formType, const char* pName) : AreaObj(formType, pName), mMapIdInfo() {
     }
 
-    virtual ~WarpCube();
-
     virtual void init(const TableIter& rIter);
     virtual void movement();
     virtual void draw() const;
@@ -24,7 +22,7 @@ public:
 
 class WarpCubeMgr : public AreaObjMgr {
 public:
-    WarpCubeMgr(s32 formType, const char* pName) : AreaObjMgr(formType, pName), mWarpCube() {
+    WarpCubeMgr(s32 firstCapacity, const char* pName) : AreaObjMgr(firstCapacity, pName), mWarpCube() {
     }
 
     virtual ~WarpCubeMgr() {

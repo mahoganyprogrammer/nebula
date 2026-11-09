@@ -8,7 +8,7 @@
 #include "Game/Util/MathUtil.hpp"
 #include "Game/Util/ObjUtil.hpp"
 #include <nebula_geometry.hpp>
-#include <JSystem/JUtility/JUTTexture.hpp>
+#include "Game/Render/GameTexture.hpp"
 
 namespace {
     // One quad from start to end, `rOffset` to each side; s runs across the ribbon and t along it.
@@ -69,11 +69,8 @@ f32 GCaptureRibbon::calcLineWidth() const {
     return (20.0f * rate) + (90.0f * (1.0f - rate));
 }
 
-GCaptureRibbon::~GCaptureRibbon() {
-}
-
 void GCaptureRibbon::init(const TableIter& rIter) {
-    mTexture = new JUTTexture(MR::loadTexFromArc("GCaptureRibbon", "GCaptureRibbon.bti"));
+    mTexture = new GameTexture(MR::loadTexFromArc("GCaptureRibbon", "GCaptureRibbon.bti"));
     MR::invalidateClipping(this);
     makeActorAppeared();
 }

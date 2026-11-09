@@ -35,8 +35,25 @@ VARIANTS = {
     "sample": (4, ["NATIVE_SAMPLE"]),
 }
 VERTEX_FORMS = ("base", "motion")
+# A Vulkan device without descriptor indexing reads each pixel program's bound-table form (program.hlsli
+# NEBULA_BOUND_TABLES): stored at the variant + BOUND_OFFSET, STORED variants to a row (core/program_table.h).
+BOUND_OFFSET = 5
+STORED = 10
 READS_WORLD = 1
 LIT = 2
+
+
+def native_coords(path):
+    """The texture coordinates a written shader's vertex stage reads: its NATIVE_COORDS, from the file or the .hlsl it includes."""
+    text = read(path)
+    found = re.search(r"^\s*#\s*define\s+NATIVE_COORDS\s+(\d+)", text, re.M)
+    if found:
+        return int(found.group(1))
+    for name in re.findall(r'^\s*#\s*include\s+"([^"]+\.hlsl)"', text, re.M):
+        inner = native_coords(os.path.join(MATERIALS, name))
+        if inner is not None:
+            return inner
+    return None
 
 
 def read(path):
@@ -62,11 +79,17 @@ def main():
     jobs = {}
     rows = {}
     flags = {}
+    coords = {}
 
     def add(stage, row, source, text, entry, defines, variant):
         key = hashlib.sha1(("\0".join([tool_id, headers, text, stage, entry] + defines)).encode()).hexdigest()
         jobs[key] = (source, stage, entry, defines)
         rows.setdefault((stage, row), {})[variant] = key
+        if backend == "spirv" and stage == "ps":
+            bound = defines + ["NEBULA_BOUND_TABLES"]
+            bound_key = hashlib.sha1(("\0".join([tool_id, headers, text, stage, entry] + bound)).encode()).hexdigest()
+            jobs[bound_key] = (source, stage, entry, bound)
+            rows[(stage, row)][variant + BOUND_OFFSET] = bound_key
 
     def add_program(stage, row, source, entry):
         text = read(source)
@@ -85,6 +108,11 @@ def main():
     for number, name in enumerate(WRITTEN + (["inspect_show"] if dev else []), 1):
         source = os.path.join(MATERIALS, name + ".hlsl")
         row = SITE | number << 1
+        count = native_coords(source)
+        if count is None:
+            print(f"{source} defines no NATIVE_COORDS")
+            return 1
+        coords[("vs", row)] = coords[("vs", row | 1)] = count
         add_program("vs", row, source, "native_vs")
         if name in VERTEX_ONLY:
             continue
@@ -151,7 +179,7 @@ def main():
     interface = hashlib.sha1(headers.encode()).hexdigest()
     vertex = sorted(r for s, r in rows if s == "vs")
     pixel = sorted(r for s, r in rows if s == "ps")
-    at = 64 + (len(vertex) + len(pixel)) * (16 + 8 * len(VARIANTS))
+    at = 64 + (len(vertex) + len(pixel)) * (16 + 8 * STORED)
     placed = {}
     chunks = []
     sizes = {}
@@ -176,11 +204,11 @@ def main():
     packed = []
     for stage, ids in (("vs", vertex), ("ps", pixel)):
         for row in ids:
-            words = [(0, 0)] * len(VARIANTS)
+            words = [(0, 0)] * STORED
             for variant, key in rows[(stage, row)].items():
                 words[variant] = place(key)
-            packed.append(struct.pack("<QII", row, flags[(stage, row)], 0) + b"".join(struct.pack("<II", *w) for w in words))
-    head = b"NBPROG01" + struct.pack("<II", len(vertex), len(pixel)) + interface.encode() + b"\0" * 8
+            packed.append(struct.pack("<QII", row, flags[(stage, row)], coords.get((stage, row), 0)) + b"".join(struct.pack("<II", *w) for w in words))
+    head = b"NBPROG02" + struct.pack("<II", len(vertex), len(pixel)) + interface.encode() + b"\0" * 8
     blob = head + b"".join(packed) + b"".join(chunks)
     temp = out + ".tmp"
     with open(temp, "wb") as f:

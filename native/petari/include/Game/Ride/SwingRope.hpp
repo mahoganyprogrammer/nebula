@@ -5,7 +5,7 @@
 #include <nebula_geometry.hpp>
 
 class ActorCameraInfo;
-class JUTTexture;
+class GameTexture;
 class SledRopePoint;
 class SwingRopePoint;
 
@@ -52,7 +52,6 @@ public:
 
     void drawStop(TypedDraw& rDraw) const;
     void drawFree(TypedDraw& rDraw) const;
-    void drawBind(TypedDraw& rDraw) const;
 
     const Vec3f& getBasePos() const {
         return mBasePos;
@@ -72,12 +71,8 @@ public:
     f32 mSlideSpeed;
     SledRopePoint* mSledPoint;
     ActorCameraInfo* mCameraInfo;
-    f32 mFootCoord;
-    f32 mFootPointNum;
-    f32 mGrabToFootDist;
     Vec3f mFootPos;
     Vec3f mShadowDropPos;
-    f32 mShadowDropOffset;
     s32 mPrevSoundLvl;
 };
 
@@ -89,5 +84,5 @@ public:
     // What its objects draw with.
     SiteMaterial mMaterial;
 
-    JUTTexture* mTexture;
+    GameTexture* mTexture;
 };

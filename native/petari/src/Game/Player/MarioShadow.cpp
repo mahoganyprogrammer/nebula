@@ -5,6 +5,7 @@
 #include "Game/Render/FrameList.hpp"
 #include "Game/Render/FrameList.hpp"
 #include "Game/Render/TypedDraw.hpp"
+#include "Game/Map/CollisionCode.hpp"
 #include "Game/Map/HitInfo.hpp"
 #include "Game/Player/PlayerModel.hpp"
 #include "Game/Util/CameraUtil.hpp"
@@ -12,13 +13,13 @@
 #include "Game/Util/DrawUtil.hpp"
 #include "Game/Util/MapUtil.hpp"
 #include "Game/Util/MathUtil.hpp"
-#include "Game/Util/MemoryUtil.hpp"
+#include "Game/System/Arenas.hpp"
 #include "Game/Util/SceneUtil.hpp"
 #include "Game/Util/ScreenUtil.hpp"
 #include "Game/Render/ModelData.hpp"
 #include "Game/Render/Model.hpp"
 #include "Game/System/NebulaArena.hpp"
-#include <JSystem/JUtility/JUTTexture.hpp>
+#include "Game/Render/GameTexture.hpp"
 #include <cstring>
 
 namespace {
@@ -197,8 +198,8 @@ void CollisionShadow::create(const Vec3f& rPosition, const Vec3f& rDirection, co
             mEdgePolygons[mEdgePolygonCount] = i;
             mEdgePolygonCount++;
         } else {
-            const char* code = MR::getFloorCodeString(&mPolygons[i]);
-            if (code == nullptr || (strcmp(code, "PullBack") != 0 && strcmp(code, "Glass") != 0)) {
+            const s32 code = MR::getFloorCodeIndex(&mPolygons[i]);
+            if (code != CollisionFloorCode_PullBack && code != CollisionFloorCode_Glass) {
                 mPolygonIndices[polygonCount] = i;
                 polygonCount++;
             }
@@ -257,7 +258,7 @@ void CollisionShadow::create(const Vec3f& rPosition, const Vec3f& rDirection, co
 namespace {
     // runtime/src/render/materials/color_tex_alpha.hlsl: black at the shadow texture's alpha where it passes `test`
     // (0 above, 1 equal to, 2 not equal to `ref`), blended by alpha unless the site changes it; no culling.
-    void initShadowMaterial(SiteMaterial* pMaterial, const JUTTexture* pTexture, u32 test, u8 ref) {
+    void initShadowMaterial(SiteMaterial* pMaterial, const GameTexture* pTexture, u32 test, u8 ref) {
         TDDraw::setupNative(pMaterial, 1, 1, 0);
         pMaterial->mShader = NEBULA_SHADER_COLOR_TEX_ALPHA;
         pMaterial->constants[4] = ref;
@@ -324,16 +325,12 @@ void CollisionShadow::sendZsortedVtx(TypedDraw& rDraw, bool offset) const {
 
 void CollisionShadow::initCaptureTex() {
     {
-        MR::CurrentHeapRestorer restorer(MR::getSceneHeap());
-        mCaptureTex = JUTTexture::createTarget(0.25f, 0.35f);
+        NebulaArena::CurrentScope restorer(Arenas::scene());
+        mCaptureTex = GameTexture::createTarget(0.25f, 0.35f);
         MR::setMarioShadowTex(mCaptureTex);
     }
 
-    mCaptureTex->mWrapS = NEBULA_WRAP_CLAMP;
-    mCaptureTex->mWrapT = NEBULA_WRAP_CLAMP;
-    mCaptureTex->mMinType = NEBULA_FILTER_LINEAR;
-    mCaptureTex->mMagType = NEBULA_FILTER_LINEAR;
-    mCaptureTex->init();
+    mCaptureTex->setSampling(NEBULA_WRAP_CLAMP, NEBULA_WRAP_CLAMP, NEBULA_FILTER_LINEAR, NEBULA_FILTER_LINEAR);
 }
 
 void CollisionShadow::setViewMtx(const Vec3f& rDirection) {
@@ -389,9 +386,9 @@ void CollisionShadow::drawAndCaptureTex(PlayerModel* pModel, const Vec3f& rPosit
     }
 
     // Mario's silhouette, a pass into the shadow texture.
-    const ResTIMG* image = mCaptureTex->getTexInfo();
+    const ResTIMG* image = mCaptureTex->info();
     const void* destination = image->image();
-    Frame::targetBegin(destination, mCaptureTex->mShareAcross, mCaptureTex->mShareDown, 0);
+    Frame::targetBegin(destination, mCaptureTex->shareAcross(), mCaptureTex->shareDown(), 0);
     // A pixel of the picture's edge stays clear for the texture's clamp.
     const f32 cEdge = 1.0f / 160.0f;
 

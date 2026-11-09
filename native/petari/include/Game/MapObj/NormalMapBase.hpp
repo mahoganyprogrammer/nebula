@@ -6,13 +6,12 @@
 class Material;
 class Model;
 class Mesh;
-class JUTTexture;
+class GameTexture;
 
 class NormalMapBase : public LiveActor {
 public:
     NormalMapBase(const char*);
 
-    virtual ~NormalMapBase();
     virtual void draw() const;
     virtual void calcAnim();
     virtual void control();
@@ -33,14 +32,14 @@ public:
     void drawShape(Model*, Mesh*) const;
     void loadTexture1(Material*) const;
     void createGradTexture();
-    void swapColorGB(JUTTexture*);
+    void swapColorGB(GameTexture*);
     void loadData(const char*, u32);
 
     void loadDiffuseGradTex(u32 slot) const;
-    void loadNormalTex(const JUTTexture*, u32 slot) const;
+    void loadNormalTex(const GameTexture*, u32 slot) const;
 
-    JUTTexture* mNormalTex;
-    JUTTexture* mTextures[16];
+    GameTexture* mNormalTex;
+    GameTexture** mTextures;  // one per model texture
     void* mImagePtr;
     s32 mGradTexMode;
     Mtx mDrawMtx;

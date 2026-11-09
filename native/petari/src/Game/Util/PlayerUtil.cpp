@@ -8,6 +8,7 @@
 #include "Game/Player/MarioActor.hpp"
 #include "Game/Player/PlayerEvent.hpp"
 #include "Game/Player/RushEndInfo.hpp"
+#include "Game/Util/StringUtil.hpp"
 #include "Game/Scene/SceneObjHolder.hpp"
 #include "Game/Util/ActorSensorUtil.hpp"
 #include "Game/Util/AreaObjUtil.hpp"
@@ -19,6 +20,7 @@
 #include "Game/Util/ObjUtil.hpp"
 #include "Game/Util/SoundUtil.hpp"
 #include "Game/Util/StarPointerUtil.hpp"
+#include "Game/Util/StringUtil.hpp"
 
 namespace MR {
     bool isOnGroundPlayer() {
@@ -678,7 +680,7 @@ namespace MR {
 
     bool isPlayerTakingActor(const char* pName) {
         if (MarioAccess::getTakingSensor() != nullptr) {
-            if (strcmp(MarioAccess::getTakingSensor()->mHost->mName, pName) == 0) {
+            if (MR::isEqualString(MarioAccess::getTakingSensor()->mHost->mName, pName)) {
                 return true;
             }
         }
@@ -864,7 +866,7 @@ namespace MR {
         MarioAccess::calcWorldPadDir(pDir, param2, param3);
     }
 
-    JUTTexture* getFullScreenBlurTexture() {
+    GameTexture* getFullScreenBlurTexture() {
         return MarioAccess::getPlayerActor()->mBlurTexture;
     }
 

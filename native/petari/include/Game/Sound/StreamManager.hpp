@@ -4,8 +4,6 @@
 #include "Game/Sound/StreamSound.hpp"
 #include "Game/Sound/SoundGlobal.hpp"
 
-struct StreamSource;
-
 class StreamManager : public SoundGlobal< StreamManager > {
 public:
     StreamManager(bool setInstance);
@@ -18,7 +16,7 @@ public:
     void mixOut();
     StreamSound* newStream_();
     bool isActive() const {
-        return mStreamList.getNumLinks() != 0;
+        return mStreamList.getNum() != 0;
     }
 
     SoundAudience* getAudience() {
@@ -31,12 +29,8 @@ public:
     SoundMove* getParams() {
         return &mParams;
     }
-    JSUList< StreamSound >* getStreamList() {
+    NebulaList< StreamSound >* getStreamList() {
         return &mStreamList;
-    }
-
-    void setStreamDataMgr(StreamSource* streamDataMgr) {
-        streamDataMgr_ = streamDataMgr;
     }
 
 
@@ -49,14 +43,12 @@ public:
     }
 
     int getNumActiveStreams() const {
-        return mStreamList.getNumLinks();
+        return mStreamList.getNum();
     }
 
 private:
     SoundActivity mActivity;
     SoundMove mParams;
     SoundAudience* mAudience;
-    JSUList< StreamSound > mStreamList;
-    StreamSource* streamDataMgr_;
-    SoundStrategyMgr< StreamSound >* soundStrategyMgr;
+    NebulaList< StreamSound > mStreamList;
 };

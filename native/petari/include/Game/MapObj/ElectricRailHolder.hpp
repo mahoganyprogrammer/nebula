@@ -37,8 +37,8 @@ public:
     void registerRail(const LiveActor*, ElectricRailType);
     ModelObj* createModel(ElectricRailType) const;
 
-    MR::FixedArray< ModelObj*, 4 > mRailModels;
-    MR::Vector< MR::FixedArray< RailItem*, 64 > > mRailItems;
+    MR::InlineArray< ModelObj*, 4 > mRailModels;
+    MR::InlineVector< RailItem*, 64 > mRailItems;
     bool mIsActive;
 };
 
@@ -46,5 +46,4 @@ namespace ElectricRailFunction {
     void registerRail(const LiveActor*, ElectricRailType);
     bool isTouchRail(const HitSensor*, Vec3f*, Vec3f*);
     f32 getHitSensorRadius();
-    u32 calcMeshSize(u32, s32);
 };  // namespace ElectricRailFunction

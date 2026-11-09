@@ -17,7 +17,6 @@ public:
     InputStick(const PlayerInput*);
 
     void update();
-    bool isChanged() const;
 
     const PlayerInput* mPad;
     Vec2f mStick;
@@ -25,8 +24,4 @@ public:
     u32 mHold;
     u32 mTrigger;
     u32 mRelease;
-    bool mIsTriggerUp;
-    bool mIsTriggerDown;
-    bool mIsHoldUp;
-    bool mIsHoldDown;
 };

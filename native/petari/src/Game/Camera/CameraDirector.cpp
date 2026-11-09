@@ -7,7 +7,6 @@
 #include "Game/Camera/CameraMan.hpp"
 #include "Game/Camera/CameraManEvent.hpp"
 #include "Game/Camera/CameraManGame.hpp"
-#include "Game/Camera/CameraManPause.hpp"
 #include "Game/Camera/CameraManSubjective.hpp"
 #include "Game/Camera/CameraParamChunk.hpp"
 #include "Game/Camera/CameraParamChunkHolder.hpp"
@@ -36,7 +35,6 @@
 #include "Game/Util/SequenceUtil.hpp"
 #include "Game/Util/SoundUtil.hpp"
 #include "Game/Util/StringUtil.hpp"
-#include <cstring>
 #include <nebula_format.h>
 
 namespace {
@@ -67,7 +65,6 @@ CameraDirector::CameraDirector(const char* pName) : NameObj(pName) {
     mRotChecker = new CameraRotChecker();
     mCameraManGame = new CameraManGame(mHolder, mChunkHolder, "ゲームカメラマン");
     mCameraManEvent = new CameraManEvent(mHolder, mChunkHolder, "イベントカメラマン");
-    mCameraManPause = new CameraManPause("ポーズカメラマン");
     mCameraManSubjective = new CameraManSubjective("主観カメラマン");
     mEventNum = 0;
     mIsStartCameraActive = true;
@@ -124,7 +121,7 @@ CameraTargetObj* CameraDirector::getTarget() {
 
 void CameraDirector::push(CameraMan* pMan) {
     if (mStack->mCount != 0) {
-        getCurrentCameraMan()->deactivate(this);
+        getCurrentCameraMan()->deactivate();
     }
 
     if (mStack->mCount == mStack->mCapacity) {
@@ -135,18 +132,17 @@ void CameraDirector::push(CameraMan* pMan) {
     mStack->mElements[mStack->mCount++] = pMan;
 
     pMan->owned(this);
-    pMan->activate(this);
+    pMan->activate();
 }
 
 CameraMan* CameraDirector::pop() {
     CameraMan* man = mStack->mElements[--mStack->mCount];
 
-    man->deactivate(this);
-    man->released(this);
+    man->deactivate();
+    man->released();
 
     if (mStack->mCount != 0) {
-        CameraMan* newMan = getCurrentCameraMan();
-        newMan->activate(this);
+        getCurrentCameraMan()->activate();
     }
 
     return man;
@@ -553,7 +549,7 @@ void CameraDirector::startSubjectiveCamera(s32 camType) {
         mIsStartSubjectiveCamera = true;
         mSubjectiveFrame = 0;
 
-        mCameraManSubjective->activate(this);
+        mCameraManSubjective->activate();
         mNearZ = MR::getNearZ();
 
         MR::setNearZ(10.0f);
@@ -721,7 +717,7 @@ void CameraDirector::removeEndEventAtLanding(s32 zoneID, const char* pName) {
     }
 
     for (s32 idx = 0; idx < mEventNum; idx++) {
-        if (mEvents[idx].mZoneID == zoneID && strcmp(mEvents[idx].mName, pName) == 0) {
+        if (mEvents[idx].mZoneID == zoneID && MR::isEqualString(mEvents[idx].mName, pName)) {
             if (mEventNum - 1 == idx) {
                 mEventNum = 0;
                 return;
@@ -809,8 +805,8 @@ void CameraDirector::resetCameraMan() {
     CameraLocalUtil::setUpVec(man, mTargetHolder->get()->getUpVec());
     CameraLocalUtil::setWatchUpVec(man, mTargetHolder->get()->getUpVec());
 
-    man->deactivate(this);
-    man->activate(this);
+    man->deactivate();
+    man->activate();
 
     mOnlyCamera->mIsResetting = true;
 }

@@ -9,11 +9,8 @@ namespace {
     static const f32 sLocalOffsetRateScale = 0.05f;
 };  // namespace
 
-CameraHeightArrange::~CameraHeightArrange() {
-}
-
 CameraHeightArrange::CameraHeightArrange(Camera* pCamera)
-    : NameObj("CameraHeightArrange"), mCamera(pCamera), mIsJumping(), mIsStartJump(), mIsEndJump(), mNextParam(new CameraPoseParam()),
+    : NameObj("CameraHeightArrange"), mCamera(pCamera), mIsJumping(), mIsStartJump(), mNextParam(new CameraPoseParam()),
       mCurrParam(new CameraPoseParam()), mCameraWatchPosBaseHeight(), mCameraTargetPosHeight(), mCameraWatchPosHeight(), mCameraPosHeight(),
       mCameraWatchPosOffset(), mCameraPosOffset(), mJumpState(), mStateTime(), mIsCatchup(), mChaseTime(), mRiseTime(), mDropTime(), mRiseEaseTime(),
       mUpdateGlobalAxis(), mGlobalAxis(0.0f, 1.0f, 0.0f), mOffsetScale(0.1f), mOffsetScaleMax(15.0f), mFocalScaleUpper(0.3f), mFocalScaleLower(0.1f),
@@ -30,12 +27,6 @@ void CameraHeightArrange::updateJump() {
         mIsStartJump = true;
     } else {
         mIsStartJump = false;
-    }
-
-    if (mIsJumping && !CameraLocalUtil::getTarget(mCamera)->isJumping()) {
-        mIsEndJump = true;
-    } else {
-        mIsEndJump = false;
     }
 
     mIsJumping = CameraLocalUtil::getTarget(mCamera)->isJumping();
@@ -78,7 +69,6 @@ void CameraHeightArrange::arrange() {
 void CameraHeightArrange::resetJump() {
     mIsJumping = false;
     mIsStartJump = false;
-    mIsEndJump = false;
 }
 
 void CameraHeightArrange::reset() {

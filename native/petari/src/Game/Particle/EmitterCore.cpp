@@ -11,12 +11,9 @@
 EmitterCallBack::~EmitterCallBack() {
 }
 
-EmitterCore::EmitterCore() : mLink(this), mpChunks(NULL), mpLastChunk(NULL), mRndm(0) {
+EmitterCore::EmitterCore() : mpPrevEmtr(NULL), mpNextEmtr(NULL), mpChunks(NULL), mpLastChunk(NULL), mRndm(0) {
     mDrawSlot = 0;
     mMotionEpoch = 0;
-}
-
-EmitterCore::~EmitterCore() {
 }
 
 // Out of free slots: one more chunk, its slots in order.
@@ -167,4 +164,3 @@ void EmitterCore::calcEmitterGlobalPosition(Vec3f* dst) const {
     mtx[2][3] = mGlobalTrs.z;
     NebulaMtxMultVec(mtx, mLocalTrs, *dst);
 }
-

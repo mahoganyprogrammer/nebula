@@ -7,7 +7,6 @@ class FirePressureBullet : public LiveActor {
 public:
     FirePressureBullet(const char*);
 
-    virtual ~FirePressureBullet();
     virtual void init(const TableIter&);
     virtual void kill();
     virtual void calcAndSetBaseMtx();
@@ -18,7 +17,6 @@ public:
     bool isCrash() const;
 
     Vec3f mFront;
-    LiveActor* mFirePressure;
     f32 mSpeed;
     bool mIsHoming;
     bool mCanCrash;

@@ -8,7 +8,7 @@
 #include "Game/Scene/SceneFunction.hpp"
 #include "Game/Util.hpp"
 #include "Game/System/NebulaArena.hpp"
-#include <JSystem/JUtility/JUTTexture.hpp>
+#include "Game/Render/GameTexture.hpp"
 
 namespace {
     // Shadow-space x and z onto the shadow texture: s = x * scale + 0.5, t = -z * scale + 0.5, q = 1.
@@ -40,14 +40,11 @@ void TrampleStarShare::copy(TrampleStar* pTrampleStar) const {
 TrampleStar::TrampleStar(const char* pName) : LiveActor(pName), mIsLod(false) {
 }
 
-TrampleStar::~TrampleStar() {
-}
-
 void TrampleStar::init(const TableIter& rIter) {
     MR::initDefaultPos(this, rIter);
     MR::connectToScene(this, MR::MovementType_MapObj, MR::CalcAnimType_MapObj, MR::DrawBufferType_None, MR::DrawType_FlexibleSphere);
 
-    mTexture = new JUTTexture(MR::loadTexFromArc("TrampleStar", "TrampleStar.bti"));
+    mTexture = new GameTexture(MR::loadTexFromArc("TrampleStar", "TrampleStar.bti"));
 
     f32 scale = 500.0f;
     scale *= mScale.x;
@@ -64,7 +61,7 @@ void TrampleStar::init(const TableIter& rIter) {
     for (u32 actorIndex = 0; actorIndex < MR::getAllLiveActorGroup()->getObjNum(); actorIndex++) {
         LiveActor* actor = MR::getAllLiveActorGroup()->getActor(actorIndex);
 
-        if (strcmp(actor->mName, "TrampleStarShare") == 0) {
+        if (MR::isEqualString(actor->mName, "TrampleStarShare")) {
             isShareStar = true;
             static_cast< TrampleStarShare* >(actor)->copy(this);
             break;
@@ -191,7 +188,7 @@ void TrampleStar::toSphere(f32 radius) {
 }
 
 void TrampleStar::initCheckFlag(u32 numFlags) {
-    mCheckFlags = new (-0x4) u16[numFlags * numFlags];
+    mCheckFlags = new u16[numFlags * numFlags];
     mNumFlags = numFlags;
 
     for (u32 idx = 0; idx < mNumFlags * mNumFlags; idx++) {
@@ -245,7 +242,7 @@ void TrampleStar::divide() {
 
     mNumSurfaces = numSurfaces;
     mNumVtxs = numVtxs;
-    delete mCheckFlags;
+    delete[] mCheckFlags;
 }
 
 void TrampleStar::moveVtx(f32 deformRate, u32 vtxIdx, u32 /* unused */, f32 /* unused */, u32 /* unused */) {
@@ -550,20 +547,20 @@ void TrampleStar::drawSelf() const {
     Vec3f playerPos = *MR::getPlayerPos();
     Vec3f diff = mPosition - playerPos;
     Vec3f shadowPos = MR::getMarioShadowVec();
-    Pos3f mtx3;
-    Pos3f mtx;
+    Pos3f texMtx;
+    Pos3f toPlayer;
     Rot3f rot;
-    Pos3f mtx2;
+    Pos3f shadowFrame;
 
     if (MR::vecKillElement(diff, shadowPos, &diff) > 0.0f) {
-        NebulaMtxTrans(mtx, -playerPos.x, -playerPos.y, -playerPos.z);
+        NebulaMtxTrans(toPlayer, -playerPos.x, -playerPos.y, -playerPos.z);
     } else {
-        NebulaMtxTrans(mtx, 1000000.0f, 1000000.0f, 1000000.0f);
+        NebulaMtxTrans(toPlayer, 1000000.0f, 1000000.0f, 1000000.0f);
     }
 
     MR::makeMtxRotate(rot, -*MR::getPlayerRotate());
 
-    NebulaMtxIdentity(mtx2);
+    NebulaMtxIdentity(shadowFrame);
 
     Vec3f front;
     MR::getPlayerFrontVec(&front);
@@ -580,10 +577,10 @@ void TrampleStar::drawSelf() const {
         return;
     }
 
-    MR::makeMtxUpFront(&mtx2, -MR::getMarioShadowVec(), -front);
-    NebulaMtxInverse(mtx2, mtx2);
+    MR::makeMtxUpFront(&shadowFrame, -MR::getMarioShadowVec(), -front);
+    NebulaMtxInverse(shadowFrame, shadowFrame);
 
-    MR::multMtx(mtx3, mtx, mtx2);
+    MR::multMtx(texMtx, toPlayer, shadowFrame);
     Pos3f texProj;
 
     for (s32 row = 0; row < 3; row++) {
@@ -597,14 +594,14 @@ void TrampleStar::drawSelf() const {
     texProj[2][3] = cShadowTexQ;
     texProj[0][3] = cShadowTexOffset;
     texProj[1][3] = cShadowTexOffset;
-    MR::multMtx(mtx3, mtx3, texProj);
+    MR::multMtx(texMtx, texMtx, texProj);
 
     // runtime/src/render/materials/trample_star.hlsl: blended by alpha, depth tested early and written, no culling.
     SiteMaterial material;
     TDDraw::setupNative(&material, 0, 1, 0);
     material.mShader = NEBULA_SHADER_TRAMPLE_STAR;
     material.setDepth(true, NEBULA_COMPARE_LEQUAL, true);
-    material.setMatrix(3, 0, mtx3);
+    material.setMatrix(3, 0, texMtx);
     material.setColor(0, 0xCC, 0xCC, 0xCC, 0xFF);
     material.setColor(4, 0x7F, 0x7F, 0x93, 0xC3);
     material.constants[8] = 0xB4 / 255.0f;
@@ -628,4 +625,3 @@ void TrampleStar::drawSelf() const {
     }
 
 }
-

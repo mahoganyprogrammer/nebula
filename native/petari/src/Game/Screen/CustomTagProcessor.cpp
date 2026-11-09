@@ -473,7 +473,7 @@ CustomTagProcessor::Operation CustomTagProcessor::exeSoundGroup(Ui::Rect* rect, 
 
 CustomTagProcessor::Operation CustomTagProcessor::exePictureGroup(Ui::Rect* rect, const MessageEditorMessageTag& tag, ContextType* context) {
     Ui::TextWriterBase< char16_t > writer = *context->writer;
-    writer.SetFont(*MR::getPictureFontNW4R());
+    writer.SetFont(*MR::getPictureFont());
     // The text writer reads one character past the length it is given (its loop's next read precedes the bound
     // check); a terminator keeps that read inside the buffer.
     const char16_t pictureText[2] = {static_cast< char16_t >(tag.getTag() + u'0'), 0};
@@ -538,9 +538,9 @@ CustomTagProcessor::Operation CustomTagProcessor::exeSystemGroup(Ui::Rect* rect,
 }
 
 CustomTagProcessor::Operation CustomTagProcessor::exeLocalizeGroup(Ui::Rect* rect, const MessageEditorMessageTag& tag, ContextType* context) {
-    char16_t string[32];
-    ReplaceTagProcessor::exeLocalizeGroup(string, tag);
-    writeString(rect, string, context);
+    MR::Text16 string;
+    ReplaceTagProcessor::exeLocalizeGroup(string.room(ReplaceTagProcessor::getLocalizeGroupRoom(tag)), tag);
+    writeString(rect, string.c_str(), context);
     return OPERATION_DEFAULT;
 }
 
@@ -605,10 +605,12 @@ CustomTagProcessor::Operation CustomTagProcessor::exeSystemGroupRuby(Ui::Rect* r
     s32 baseLength = tag.getParam8(0);
     const char16_t* rubyText = tag.getParamPtr(1);
     s32 rubyLength = (tag.getParamLength() - 2) / sizeof(char16_t);
-    char16_t ruby[32];
+    MR::Text16 rubyString;
+    char16_t* const ruby = rubyString.room(static_cast< u32 >(rubyLength) + 1);
     MR::copyMemory(ruby, rubyText, rubyLength * sizeof(char16_t));
     ruby[rubyLength] = u'\0';
-    char16_t base[32];
+    MR::Text16 baseString;
+    char16_t* const base = baseString.room(static_cast< u32 >(baseLength) + 1);
     MR::copyMemory(base, context->str + tag.getTagLength() / 2, baseLength * sizeof(char16_t));
     base[baseLength] = u'\0';
     Ui::TextWriterBase< char16_t >* writer = context->writer;
@@ -680,7 +682,7 @@ CustomTagProcessor::Operation CustomTagProcessor::exeDisplayGroupCenter(Ui::Rect
 
 CustomTagProcessor::Operation CustomTagProcessor::exeFontGroup(Ui::Rect* rect, const MessageEditorMessageTag& tag, ContextType* context) {
     Ui::TextWriterBase< char16_t > writer = *context->writer;
-    writer.SetFont(*MR::getNumberFontNW4R());
+    writer.SetFont(*MR::getNumberFont());
     const char16_t* string = tag.getParamPtr(0);
     s32 length = static_cast< s32 >(tag.getParamLength()) / 2;
     f32 width = writer.CalcStringWidth(string, length) + writer.GetCharSpace();

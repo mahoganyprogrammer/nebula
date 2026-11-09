@@ -46,6 +46,31 @@ namespace ReplaceTagProcessor {
         }
     };  // namespace ImplArgs
 
+    u32 getReplaceRoom(const char16_t* pSrc) {
+        u32 room = 1;
+        // A mod's galaxy that names no text for itself.
+        for (; pSrc != nullptr && *pSrc != 0 && !MR::isMessageEditorNextTag(pSrc);) {
+            if (*pSrc == 0x1A) {
+                MessageEditorMessageTag tag(pSrc + 1);
+                const u32 skip = tag.getSkipLength() + 1;
+                if (tag.getGroup() == 5) {
+                    room += getLocalizeGroupRoom(tag);
+                } else if (tag.getGroup() == 9) {
+                    room += getRaceTimeGroupRoom(tag);
+                } else {
+                    room += skip;
+                }
+
+                pSrc += skip;
+            } else {
+                room++;
+                pSrc++;
+            }
+        }
+
+        return room;
+    }
+
     u32 Replace(char16_t* pDst, const char16_t* pSrc) {
         char16_t* pStart = pDst;
         // A mod's galaxy that names no text for itself.
@@ -133,17 +158,43 @@ namespace ReplaceTagProcessor {
         return rTag.getTagLength() / 2 + 1;
     }
 
-    u32 exeStringGroup(char16_t* pDst, const MessageEditorMessageTag& rTag, va_list args) {
-        va_list copy;
-        const char16_t* pString = nullptr;
-        // A va_list is a pointer.
-        va_copy(copy, args);
-        for (u32 i = 0; i <= rTag.getParam32(1); i++) {
-            pString = va_arg(copy, const char16_t*);
+    namespace {
+        // The string argument a string tag names.
+        const char16_t* findStringArg(const MessageEditorMessageTag& rTag, va_list args) {
+            va_list copy;
+            const char16_t* pString = nullptr;
+            va_copy(copy, args);
+            for (u32 i = 0; i <= rTag.getParam32(1); i++) {
+                pString = va_arg(copy, const char16_t*);
+            }
+            va_end(copy);
+            return pString;
         }
-        va_end(copy);
 
-        return MR::formatText(pDst, 0x100, u"%ls", pString);
+        u32 stringUnits(const char16_t* pString) {
+            u32 units = 0;
+            if (pString != nullptr) {
+                while (pString[units] != 0) {
+                    units++;
+                }
+            }
+            return units;
+        }
+    }  // namespace
+
+    u32 getStringGroupRoom(const MessageEditorMessageTag& rTag, va_list args) {
+        return stringUnits(findStringArg(rTag, args));
+    }
+
+    // The whole argument, however long.
+    u32 exeStringGroup(char16_t* pDst, const MessageEditorMessageTag& rTag, va_list args) {
+        const char16_t* pString = findStringArg(rTag, args);
+        const u32 units = stringUnits(pString);
+        for (u32 i = 0; i < units; i++) {
+            pDst[i] = pString[i];
+        }
+        pDst[units] = 0;
+        return units;
     }
 
     u32 exeNumberGroup(char16_t* pDst, const MessageEditorMessageTag& rTag, va_list args) {
@@ -180,42 +231,86 @@ namespace ReplaceTagProcessor {
         return 0;
     }
 
-    u32 exeLocalizeGroupPlayerName(char16_t* pDst, u8 form) {
-        char name[0x100];
-        if (MR::isPlayerLuigi()) {
-            nebula_snprintf(name, sizeof(name), "System_PlayerName1%02d", form);
-        } else {
-            nebula_snprintf(name, sizeof(name), "System_PlayerName0%02d", form);
+    namespace {
+        const char16_t* findPlayerName(u8 form) {
+            MR::FormattedName name(MR::isPlayerLuigi() ? "System_PlayerName1%02d" : "System_PlayerName0%02d", form);
+            return MR::getGameMessageDirect(name.c_str());
+        }
+    }  // namespace
+
+    u32 getLocalizeGroupRoom(const MessageEditorMessageTag& rTag) {
+        switch (rTag.getTag()) {
+        case 0:
+            return static_cast< u32 >(MR::getStringLengthWithMessageTag(findPlayerName(rTag.getParam8(0)))) + 1;
         }
 
-        const char16_t* pMessage = MR::getGameMessageDirect(name);
+        return 1;
+    }
+
+    u32 exeLocalizeGroupPlayerName(char16_t* pDst, u8 form) {
+        const char16_t* pMessage = findPlayerName(form);
         int length = MR::getStringLengthWithMessageTag(pMessage);
         MR::copyString(pDst, pMessage, length + 1);
         return length;
     }
 
-    u32 exeRaceTimeGroup(char16_t* pDst, const MessageEditorMessageTag& rTag) {
-        if (rTag.getTag() == 5) {
-            MR::makeRaceCurrentTimeString(pDst);
-        } else {
-            MR::makeRaceBestTimeString(pDst, rTag.getTag());
+    namespace {
+        // Tag 5 is the race being run, any other the best time of the race it numbers.
+        const char16_t* makeRaceTime(MR::Text16& rText, const MessageEditorMessageTag& rTag) {
+            return rTag.getTag() == 5 ? MR::makeRaceCurrentTimeString(rText) : MR::makeRaceBestTimeString(rText, rTag.getTag());
         }
+    }  // namespace
 
-        return 8;
+    u32 getRaceTimeGroupRoom(const MessageEditorMessageTag& rTag) {
+        MR::Text16 text;
+        return stringUnits(makeRaceTime(text, rTag));
+    }
+
+    // The whole time, however the language writes it.
+    u32 exeRaceTimeGroup(char16_t* pDst, const MessageEditorMessageTag& rTag) {
+        MR::Text16 text;
+        const char16_t* pTime = makeRaceTime(text, rTag);
+        const u32 units = stringUnits(pTime);
+        for (u32 i = 0; i < units; i++) {
+            pDst[i] = pTime[i];
+        }
+        pDst[units] = 0;
+        return units;
     }
 };  // namespace ReplaceTagProcessor
 
 u32 ReplaceTagFunction::ReplaceArgs(char16_t* pDst, s32 length, const char16_t* pFormat, ...) {
-    char16_t buffer[0x200];
     va_list args;
     va_start(args, pFormat);
-    s32 result = ReplaceTagProcessor::ReplaceArgs(buffer, pFormat, args);
-    if (result >= length) {
-        buffer[length - 1] = 0;
-        length = result;
+    // Room for the replaced text: a number tag gives at most 12 units, a string tag its argument's length, any other
+    // tag keeps its length.
+    u32 room = 1;
+    for (const char16_t* pText = pFormat; *pText != 0 && !MR::isMessageEditorNextTag(pText);) {
+        if (*pText == 0x1A) {
+            MessageEditorMessageTag tag(pText + 1);
+            const u32 skip = tag.getSkipLength() + 1;
+            if (tag.getGroup() == 7) {
+                room += ReplaceTagProcessor::getStringGroupRoom(tag, args);
+            } else {
+                room += tag.getGroup() == 6 ? 12 : skip;
+            }
+            pText += skip;
+        } else {
+            room++;
+            pText++;
+        }
     }
 
-    MR::copyString(pDst, buffer, length);
+    char16_t stack[0x200];
+    MR::Text16 heap;
+    char16_t* const buffer = room <= 0x200 ? stack : heap.room(room);
+    const u32 result = ReplaceTagProcessor::ReplaceArgs(buffer, pFormat, args);
     va_end(args);
-    return length;
+    if (pDst != nullptr && length > 0) {
+        if (result >= static_cast< u32 >(length)) {
+            buffer[length - 1] = 0;
+        }
+        MR::copyString(pDst, buffer, length);
+    }
+    return result;
 }

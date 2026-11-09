@@ -1,5 +1,4 @@
 #include "Game/NPC/TicoFat.hpp"
-#include <JSystem/JUtility/JUTNativeLog.hpp>
 #include "Game/Camera/CameraTargetArg.hpp"
 #include "Game/Demo/AstroDemoFunction.hpp"
 #include "Game/Effect/MultiEmitter.hpp"
@@ -35,6 +34,7 @@
 #include "Game/Util/RailUtil.hpp"
 #include "Game/Util/ScreenUtil.hpp"
 #include "Game/Util/SoundUtil.hpp"
+#include "Game/Util/StringUtil.hpp"
 #include "Game/Util/StarPointerUtil.hpp"
 #include "Game/Util/TalkUtil.hpp"
 
@@ -69,63 +69,36 @@ namespace {
     static const char* sInfoMessageID = "InformationPlanet";
     static TicoFatParam sParam;
     const Color8 hPointLight(0xFF, 0x7D, 0xE6, 0xFF);
-};  // namespace
 
-const char* TicoFat::getActionName(const char* pName) {
-    if (calcScale() > 1.6f) {
-        if (!strcmp(pName, "Eat")) {
-            return "eat2";
+    enum ScaledAction {
+        ACTION_EAT,
+        ACTION_EAT_START,
+        ACTION_WAIT,
+        ACTION_EXCITE,
+        ACTION_JOY,
+        ACTION_COUNT
+    };
+
+    // Action names per size step (scale up to 1.3, up to 1.6, above 1.6), in ScaledAction order.
+    const char* const sScaledActionNames[3][ACTION_COUNT] = {
+        {"eat0", "eatstart0", "wait0", "excite0", "joy0"},
+        {"eat1", "eatstart1", "wait1", "excite1", "joy1"},
+        {"eat2", "eatstart2", "wait2", "excite2", "joy2"},
+    };
+
+    // The action name for the actor's current size step; a table lookup with no name compare.
+    const char* getScaledActionName(TicoFat* pActor, ScaledAction action) {
+        f32 scale = pActor->calcScale();
+        s32 step = 0;
+        if (scale > 1.6f) {
+            step = 2;
+        } else if (scale > 1.3f) {
+            step = 1;
         }
-        if (!strcmp(pName, "EatStart")) {
-            return "eatstart2";
-        }
-        if (!strcmp(pName, "Wait")) {
-            return "wait2";
-        }
-        if (!strcmp(pName, "Excite")) {
-            return "excite2";
-        }
-        if (!strcmp(pName, "Joy")) {
-            return "joy2";
-        }
-    } else {
-        if (calcScale() > 1.3f) {
-            if (!strcmp(pName, "Eat")) {
-                return "eat1";
-            }
-            if (!strcmp(pName, "EatStart")) {
-                return "eatstart1";
-            }
-            if (!strcmp(pName, "Wait")) {
-                return "wait1";
-            }
-            if (!strcmp(pName, "Excite")) {
-                return "excite1";
-            }
-            if (!strcmp(pName, "Joy")) {
-                return "joy1";
-            }
-        } else {
-            if (!strcmp(pName, "Eat")) {
-                return "eat0";
-            }
-            if (!strcmp(pName, "EatStart")) {
-                return "eatstart0";
-            }
-            if (!strcmp(pName, "Wait")) {
-                return "wait0";
-            }
-            if (!strcmp(pName, "Excite")) {
-                return "excite0";
-            }
-            if (!strcmp(pName, "Joy")) {
-                return "joy0";
-            }
-        }
+
+        return sScaledActionNames[step][action];
     }
-
-    return pName;
-}
+};  // namespace
 
 TicoFat::TicoFat(const char* pName) : NPCActor(pName) {
     mCameraInfo = nullptr;
@@ -241,10 +214,10 @@ void TicoFat::init(const TableIter& rIter) {
     AstroDemoFunction::tryRegisterSimpleCastIfAstroGalaxy(this);
     setDefaults();
     mSwingReactDist = 1000.0f;
-    const char* waitActionName = getActionName("Wait");
+    const char* waitActionName = getScaledActionName(this, ACTION_WAIT);
     mParam.mWaitAction = waitActionName;
     mParam.mWaitTurnAction = waitActionName;
-    const char* talkActionName = getActionName("Talk");
+    const char* talkActionName = "Talk";
     mParam.mTalkAction = talkActionName;
     mParam.mTalkTurnAction = talkActionName;
 
@@ -662,7 +635,7 @@ void TicoFat::exeReaction() {
 
 void TicoFat::exePrep() {
     if (MR::isFirstStep(this)) {
-        MR::startAction(this, getActionName("Wait"));
+        MR::startAction(this, getScaledActionName(this, ACTION_WAIT));
     }
 
     if (!MR::tryStartReactionAndPushNerve(this, GET_NERVE(TicoFat, TicoFatNrvReaction)) && !MR::isPlayerElementModeInvincible()) {
@@ -676,8 +649,8 @@ void TicoFat::exePrep() {
 
 void TicoFat::exeWait() {
     if (MR::isFirstStep(this)) {
-        const char* exciteAction = getActionName("Excite");
-        mParam.mWaitAction = getActionName("Wait");
+        const char* exciteAction = getScaledActionName(this, ACTION_EXCITE);
+        mParam.mWaitAction = getScaledActionName(this, ACTION_WAIT);
         mParam.mTalkAction = exciteAction;
         mParam.mWaitTurnAction = 0;
         mParam.mTalkTurnAction = 0;
@@ -700,7 +673,7 @@ void TicoFat::exeWait() {
 void TicoFat::exePoint() {
     if (MR::isFirstStep(this)) {
         setMessage(0);
-        MR::startAction(this, getActionName("Excite"));
+        MR::startAction(this, getScaledActionName(this, ACTION_EXCITE));
     }
 
     if (!MR::tryStartReactionAndPushNerve(this, GET_NERVE(TicoFat, TicoFatNrvReaction))) {
@@ -715,10 +688,10 @@ void TicoFat::exePoint() {
 
 void TicoFat::exeEat() {
     if (MR::isFirstStep(this)) {
-        MR::startAction(this, getActionName("EatStart"));
+        MR::startAction(this, getScaledActionName(this, ACTION_EAT_START));
     } else {
         f32 frame = MR::getBckFrame(this);
-        if (MR::tryStartAction(this, getActionName("Eat"))) {
+        if (MR::tryStartAction(this, getScaledActionName(this, ACTION_EAT))) {
             MR::setBckFrame(this, frame);
         }
     }
@@ -732,7 +705,7 @@ void TicoFat::exeEat() {
 void TicoFat::exeChem() {
     if (MR::isFirstStep(this)) {
         mEatSoundStep = 5;
-        MR::startAction(this, getActionName("Chem"));
+        MR::startAction(this, "Chem");
     }
 
     if (mEatSoundStep > 0) {
@@ -753,7 +726,7 @@ void TicoFat::exeChem() {
 
 void TicoFat::exeTest() {
     if (MR::isFirstStep(this)) {
-        MR::tryStartAction(this, getActionName("Excite"));
+        MR::tryStartAction(this, getScaledActionName(this, ACTION_EXCITE));
         setMessage(2);
     }
 
@@ -775,7 +748,7 @@ void TicoFat::exeTest() {
 
 void TicoFat::exeFullness() {
     if (MR::isFirstStep(this)) {
-        MR::tryStartAction(this, getActionName("Joy"));
+        MR::tryStartAction(this, getScaledActionName(this, ACTION_JOY));
         MR::startSound(this, "SE_SM_TICOFAT_MAX");
     }
 
@@ -787,7 +760,7 @@ void TicoFat::exeFullness() {
 
 void TicoFat::exeMeta() {
     if (MR::isFirstStep(this)) {
-        MR::startAction(this, getActionName("Metamorphosis"));
+        MR::startAction(this, "Metamorphosis");
         MR::startSound(this, "SE_SM_TICOFAT_META");
         MR::startSound(this, "SE_SM_TICOFAT_META_ITEM");
     }
@@ -802,7 +775,7 @@ void TicoFat::exeMeta() {
 void TicoFat::exeDemo() {
     if (MR::isFirstStep(this)) {
         MR::startMultiActorCameraTargetSelf(this, mCameraInfo, "変身");
-        MR::startAction(this, getActionName("Demo"));
+        MR::startAction(this, "Demo");
         MR::startSound(this, "SE_SM_TICOFAT_META");
     }
 
@@ -839,7 +812,7 @@ void TicoFat::exeFly() {
     if (MR::isFirstStep(this)) {
         mFlyCoord = 0.0f;
         MR::startMultiActorCameraTargetSelf(this, mCameraInfo, "飛行");
-        MR::startAction(this, getActionName("Fly"));
+        MR::startAction(this, "Fly");
         MR::startSound(this, "SE_DM_TICOFAT_MORPH_FLY");
         MR::tryRumblePadWeak(this, PLAYER_1);
     }
@@ -903,7 +876,7 @@ void TicoFat::exeWipeIn() {
                 MR::onSwitchA(this);
             }
 
-            MR::startBck(this, getActionName("Dummy"));
+            MR::startBck(this, "Dummy");
             MR::hideModelAndOnCalcAnim(this);
             MR::deleteEffect(this, "TicoFatLight");
             if (mGoods0) {
@@ -948,7 +921,4 @@ void TicoFat::exeAfter() {
         disappear(true);
         kill();
     }
-}
-
-TicoFat::~TicoFat() {
 }

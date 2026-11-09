@@ -1,14 +1,12 @@
 #include "Game/Camera/CameraBehind.hpp"
-#include "Game/Camera/CamTranslatorBehind.hpp"
 #include "Game/Camera/CameraCalc.hpp"
 #include "Game/Camera/CameraHeightArrange.hpp"
 #include "Game/Camera/CameraLocalUtil.hpp"
+#include "Game/Camera/CameraParamChunk.hpp"
 #include "Game/Camera/CameraTargetObj.hpp"
+#include "Game/Util/MathUtil.hpp"
 
-CameraBehind::~CameraBehind() {
-}
-
-CameraBehind::CameraBehind(const char* pName) : Camera(pName), mAngleX(MR::toRadian(30.0f)), mAngleY(), mDist(3000.0f) {
+CameraBehind::CameraBehind(const char* pName) : Camera(pName), mAngleX(MR::toRadian(30.0f)), mAngleY(), mDist(3000.0f), mRate() {
     createVPanObj();
 }
 
@@ -27,8 +25,9 @@ CameraTargetObj* CameraBehind::calc() {
     return CameraLocalUtil::getTarget(this);
 }
 
-CamTranslatorBase* CameraBehind::createTranslator() {
-    return new CamTranslatorBehind(this);
+void CameraBehind::setParamFromChunk(const CameraParamChunk* pChunk) {
+    CameraGeneralParam* general = pChunk->mGeneralParam;
+    setParam(Vec2f(180.0f * general->mAngleB / MR::pi(), 180.0f * general->mAngleA / MR::pi()), general->mDist, general->mAxis.x);
 }
 
 void CameraBehind::calcPosAndUp(f32 accel) {

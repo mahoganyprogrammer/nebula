@@ -6,9 +6,6 @@
 #include "Game/Util.hpp"
 #include <nebula_geometry.hpp>
 
-FirePressure::~FirePressure() {
-}
-
 FirePressure::FirePressure(const char* pName) : PressureBase(pName), mIsDisableCollision(false) {
 }
 
@@ -23,9 +20,6 @@ void FirePressure::initBullet(const TableIter& rIter) {
 
 bool FirePressure::shotBullet(f32 speed) {
     FirePressureBullet* pBullet = MR::getSceneObj< FirePressureBulletHolder >(SceneObj_FirePressureBulletHolder)->callEmptyBullet();
-    if (pBullet == nullptr) {
-        return false;
-    }
 
     Pos3f gunPoint;
     calcGunPointFromCannon(&gunPoint);

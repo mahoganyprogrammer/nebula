@@ -47,7 +47,6 @@ public:
     Vec2f mBrightCenter;
     Vec2f mNowCenter;
     f32 mBrightness;
-    bool mIsNotVisible;
     Vec3f mDrawPos;
     f32 mDrawRadius;
 };
@@ -56,7 +55,6 @@ class BrightObj : public LiveActor, public BrightObjBase {
 public:
     BrightObj(const char*);
 
-    virtual ~BrightObj();
     virtual void init(const TableIter&);
     virtual void control();
 
@@ -70,7 +68,6 @@ class BrightSun : public LiveActor, public BrightObjBase {
 public:
     BrightSun(const char*);
 
-    virtual ~BrightSun();
     virtual void init(const TableIter&);
     virtual void control();
 

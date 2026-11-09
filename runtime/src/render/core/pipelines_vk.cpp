@@ -5,6 +5,7 @@
 #include "galaxy/render/render_config.h"
 #include "galaxy/render/renderer_common.h"
 #include "galaxy/render/vk/renderer_vk.h"
+#include "galaxy/render/vk/shader_compile_vk.h"
 #include "galaxy/render/vk/vk_context.h"
 
 #include <nebula_model.h>
@@ -21,7 +22,8 @@
 namespace galaxy::render::core {
 namespace {
 
-// The vertex inputs' locations (shader_compile_vk.cpp semantic_location).
+// The vertex inputs' locations (shader_compile_vk.cpp semantic_location): the fixed attributes, then the coordinates,
+// as many as a program names.
 enum Location : std::uint32_t {
     kPosition = 0u,
     kNormal = 1u,
@@ -29,12 +31,12 @@ enum Location : std::uint32_t {
     kBinormal = 3u,
     kColor0 = 4u,
     kColor1 = 5u,
-    kCoord0 = 6u,
-    kMatrix = kCoord0 + NEBULA_MATERIAL_SLOTS,
-    kBefore = kMatrix + 1u,
-    kWiden = kMatrix + 2u,
-    kLocations = kMatrix + 3u,
+    kMatrix = 6u,
+    kBefore = 7u,
+    kWiden = 8u,
+    kCoord0 = 9u,
 };
+constexpr std::uint32_t kNoLocation = ~0u;
 
 VkFormat location_format(std::uint32_t location) noexcept {
     switch (location) {
@@ -69,12 +71,12 @@ std::uint32_t input_location(std::uint32_t semantic) noexcept {
     case NEBULA_INPUT_BINORMAL: return kBinormal;
     case NEBULA_INPUT_WIDEN: return kWiden;
     case NEBULA_INPUT_MATRIX: return kMatrix;
-    default: return semantic >= NEBULA_INPUT_COORD0 ? kCoord0 + (semantic - NEBULA_INPUT_COORD0) : kLocations;
+    default: return semantic >= NEBULA_INPUT_COORD0 ? kCoord0 + (semantic - NEBULA_INPUT_COORD0) : kNoLocation;
     }
 }
 
-// The locations of a program's stage inputs, as a mask.
-std::uint32_t input_mask(const ProgramBytes& program) noexcept {
+// The locations of a program's stage inputs, one flag for each up to the highest.
+std::vector<bool> input_locations(const ProgramBytes& program) {
     constexpr std::uint32_t kOpVariable = 59u, kOpDecorate = 71u, kDecorationLocation = 30u, kStorageInput = 1u;
     const auto* spirv = static_cast<const std::uint32_t*>(program.data);
     const std::size_t words = program.size / 4u;
@@ -88,13 +90,16 @@ std::uint32_t input_mask(const ProgramBytes& program) noexcept {
             inputs.push_back(spirv[at + 2u]);
         }
     }
-    std::uint32_t mask = 0u;
+    std::vector<bool> reads;
     for (const std::uint32_t input : inputs) {
-        if (const auto it = locations.find(input); it != locations.end() && it->second < kLocations) {
-            mask |= 1u << it->second;
+        if (const auto it = locations.find(input); it != locations.end()) {
+            if (it->second >= reads.size()) {
+                reads.resize(std::size_t{it->second} + 1u, false);
+            }
+            reads[it->second] = true;
         }
     }
-    return mask;
+    return reads;
 }
 
 VkBlendFactor blend_factor(std::uint32_t f) noexcept {
@@ -155,6 +160,47 @@ std::uint64_t bytes_hash(const std::vector<char>& bytes) noexcept {
     return hash;
 }
 
+// The cache file: this header, then the driver's cache data. The header names what the data is good for (the programs'
+// compiler revision and the device's vendor, id, driver version and pipeline cache UUID); a file that differs, is short, or
+// whose data does not hash to the header's is never handed to the driver, so the cache starts empty and is written again.
+struct CacheFileHeader {
+    char magic[8];
+    std::uint32_t compiler_revision;
+    std::uint32_t vendor_id;
+    std::uint32_t device_id;
+    std::uint32_t driver_version;
+    std::uint8_t uuid[VK_UUID_SIZE];
+    std::uint64_t size;
+    std::uint64_t hash;
+};
+constexpr char kCacheMagic[8] = {'N', 'B', 'V', 'K', 'P', 'C', 'H', '1'};
+
+CacheFileHeader cache_header(const std::vector<char>& data) noexcept {
+    const VkPhysicalDeviceProperties& properties = vk::Context::get().properties();
+    CacheFileHeader header{};
+    std::memcpy(header.magic, kCacheMagic, sizeof(kCacheMagic));
+    header.compiler_revision = vk::kCompilerRevision;
+    header.vendor_id = properties.vendorID;
+    header.device_id = properties.deviceID;
+    header.driver_version = properties.driverVersion;
+    std::memcpy(header.uuid, properties.pipelineCacheUUID, VK_UUID_SIZE);
+    header.size = data.size();
+    header.hash = bytes_hash(data);
+    return header;
+}
+
+// The driver data inside a cache file; empty when the file is not this device's with the same programs.
+std::vector<char> unwrap_cache_file(const std::vector<char>& file) {
+    CacheFileHeader header{};
+    if (file.size() <= sizeof(header)) {
+        return {};
+    }
+    std::memcpy(&header, file.data(), sizeof(header));
+    std::vector<char> data(file.begin() + sizeof(header), file.end());
+    const CacheFileHeader expected = cache_header(data);
+    return std::memcmp(&header, &expected, sizeof(header)) == 0 ? data : std::vector<char>{};
+}
+
 // The cache is internally synchronised, so the workers keep building while a copy goes out; one writer at a time.
 std::size_t write_driver_cache() noexcept {
     static std::mutex writing;
@@ -180,7 +226,14 @@ std::size_t write_driver_cache() noexcept {
     }
     bytes.resize(size);
     const std::uint64_t hash = bytes_hash(bytes);
-    if (hash == on_disk || !replace_file(file, bytes.data(), bytes.size())) {
+    if (hash == on_disk) {
+        return 0u;
+    }
+    const CacheFileHeader header = cache_header(bytes);
+    std::vector<char> out(sizeof(header) + bytes.size());
+    std::memcpy(out.data(), &header, sizeof(header));
+    std::memcpy(out.data() + sizeof(header), bytes.data(), bytes.size());
+    if (!replace_file(file, out.data(), out.size())) {
         return 0u;
     }
     std::lock_guard guard(gModules.lock);
@@ -213,9 +266,10 @@ VkPipelineCache driver_cache(VkDevice device) {
     gModules.cache_file = shader_cache_directory() / "vk_pipelines.bin";
     std::vector<char> bytes;
     if (std::ifstream in(gModules.cache_file, std::ios::binary | std::ios::ate); in) {
-        bytes.resize(static_cast<std::size_t>(in.tellg()));
+        std::vector<char> file(static_cast<std::size_t>(in.tellg()));
         in.seekg(0);
-        in.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+        in.read(file.data(), static_cast<std::streamsize>(file.size()));
+        bytes = unwrap_cache_file(file);
     }
     gModules.on_disk = bytes.empty() ? 0u : bytes_hash(bytes);
     VkPipelineCacheCreateInfo info{VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
@@ -261,10 +315,12 @@ gpu::Pipeline* Pipelines::build(const PipelineEntry& entry, unsigned variant, un
 
     // What the vertex program reads; each from the list if named there, else the stream of zeros. A stride belongs to a
     // pipeline here, so the description's input strides decide the bindings.
-    const std::uint32_t reads = input_mask(vs);
-    VkVertexInputAttributeDescription attributes[kLocations]{};
+    const std::vector<bool> reads = input_locations(vs);
+    std::vector<VkVertexInputAttributeDescription> attributes;
+    attributes.reserve(reads.size());
+    std::vector<bool> placed(reads.size(), false);
     VkVertexInputBindingDescription bindings[gpu::kStreamCount]{};
-    std::uint32_t attribute_count = 0u, binding_count = 0u, placed = 0u;
+    std::uint32_t binding_count = 0u;
     const auto bind = [&](std::uint32_t slot, std::uint32_t stride) {
         for (std::uint32_t i = 0; i < binding_count; ++i) {
             if (bindings[i].binding == slot) {
@@ -274,11 +330,11 @@ gpu::Pipeline* Pipelines::build(const PipelineEntry& entry, unsigned variant, un
         bindings[binding_count++] = {slot, stride, VK_VERTEX_INPUT_RATE_VERTEX};
     };
     const auto add = [&](std::uint32_t location, VkFormat format, std::uint32_t slot, std::uint32_t stride, std::uint32_t offset) {
-        if (location >= kLocations || ((reads >> location) & 1u) == 0u || ((placed >> location) & 1u) != 0u) {
+        if (location >= reads.size() || !reads[location] || placed[location]) {
             return;
         }
-        placed |= 1u << location;
-        attributes[attribute_count++] = {location, slot, format, offset};
+        placed[location] = true;
+        attributes.push_back({location, slot, format, offset});
         bind(slot, stride);
     };
     const std::uint32_t position_stride = desc.position_stride != 0u ? desc.position_stride : 12u;
@@ -289,20 +345,19 @@ gpu::Pipeline* Pipelines::build(const PipelineEntry& entry, unsigned variant, un
     if (aux == 1u) {
         add(kBefore, VK_FORMAT_R32G32B32_SFLOAT, gpu::kStreamBefore, position_stride, 0u);
     }
-    for (std::uint32_t i = 0; i < desc.input_count; ++i) {
-        const NebulaLayoutInput& input = desc.inputs[i];
+    for (const NebulaLayoutInput& input : entry.inputs) {
         const bool zero = input.stream == NEBULA_STREAM_ZERO;
         const std::uint32_t slot = zero ? std::uint32_t{gpu::kStreamZero} : std::uint32_t{input.stream};
         add(input_location(input.semantic), input_format(input.format), slot, zero ? 0u : input.stride, input.offset);
     }
-    for (std::uint32_t location = 0; location < kLocations; ++location) {
+    for (std::uint32_t location = 0; location < reads.size(); ++location) {
         add(location, location_format(location), gpu::kStreamZero, 0u, 0u);
     }
     VkPipelineVertexInputStateCreateInfo vertex_input{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
     vertex_input.vertexBindingDescriptionCount = binding_count;
     vertex_input.pVertexBindingDescriptions = bindings;
-    vertex_input.vertexAttributeDescriptionCount = attribute_count;
-    vertex_input.pVertexAttributeDescriptions = attributes;
+    vertex_input.vertexAttributeDescriptionCount = static_cast<std::uint32_t>(attributes.size());
+    vertex_input.pVertexAttributeDescriptions = attributes.data();
 
     VkPipelineInputAssemblyStateCreateInfo input_assembly{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
     input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;

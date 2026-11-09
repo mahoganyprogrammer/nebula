@@ -8,27 +8,24 @@
 #include "Game/Util/MathUtil.hpp"
 #include "Game/Util/SceneUtil.hpp"
 #include "Game/System/NebulaArena.hpp"
-#include <cstring>
+#include "Game/Util/StringUtil.hpp"
 
 CameraParamChunkHolder::CameraParamChunkHolder(CameraHolder* pCameraHolder, const char* pName)
     : NameObj(pName), mCameraHolder(pCameraHolder), mChunkCapacity(cInitialCapacity), mNrChunks(),
       mChunks(new CameraParamChunk*[cInitialCapacity]), mIsSorted() {
 }
 
-CameraParamChunkHolder::~CameraParamChunkHolder() {
-}
-
-CameraParamChunk* CameraParamChunkHolder::createChunk(const CameraParamChunkID& rID, NebulaArena* pHeap) {
+CameraParamChunk* CameraParamChunkHolder::createChunk(const CameraParamChunkID& rID, NebulaArena* pArena) {
     if (isNewAttribute(rID)) {
         char firstChar = rID.mName[0];
         CameraParamChunk* chunk;
 
         if (firstChar == 'e') {
-            chunk = new (pHeap, 0) CameraParamChunkEvent(mCameraHolder, rID);
+            chunk = new (pArena, 0) CameraParamChunkEvent(mCameraHolder, rID);
         } else if (firstChar == 'g' || firstChar == 'c' || firstChar == 's') {
-            chunk = new (pHeap, 0) CameraParamChunkGame(mCameraHolder, rID);
+            chunk = new (pArena, 0) CameraParamChunkGame(mCameraHolder, rID);
         } else {
-            chunk = new (pHeap, 0) CameraParamChunk(mCameraHolder, rID);
+            chunk = new (pArena, 0) CameraParamChunk(mCameraHolder, rID);
         }
 
         if (mNrChunks == mChunkCapacity) {
@@ -176,7 +173,7 @@ void CameraParamChunkHolder::arrangeChunk(CameraParamChunk* pChunk) {
     if (mCameraVersion < 0x30003) {
         const char* className = pChunk->getClassName();
 
-        if (strcmp(className, "Game") == 0) {
+        if (MR::isEqualString(className, "Game")) {
             CameraParamChunkGame* pGameChunk = reinterpret_cast< CameraParamChunkGame* >(pChunk);
             pGameChunk->mThru = 0;
         }

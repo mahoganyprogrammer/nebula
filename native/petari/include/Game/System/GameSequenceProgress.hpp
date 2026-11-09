@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Game/Scene/SceneFactory.hpp"
 #include "Game/System/NerveExecutor.hpp"
 
 class FindingLuigiEventScheduler;
@@ -19,7 +20,7 @@ public:
     void draw();
     void startScene();
     void endScene();
-    void requestChangeScene(const char*);
+    void requestChangeScene(SceneKind);
     void requestGalaxyMove(const GalaxyMoveArgument&);
     void requestCancelScenarioSelect();
     GalaxyCometScheduler* getGalaxyCometScheduler();
@@ -33,7 +34,6 @@ public:
 
     inline static bool isCometStar(GalaxyMoveArgument);
     static bool isScenePermittedUpdateInputStatus();
-    static bool isSceneLongInputSleep();
     void updateGameDataBeforeChangeScene();
     void resetGameDataAfterChangeScene(const GalaxyMoveArgument&);
     void updateGameDataGalaxyVisitedFlag();

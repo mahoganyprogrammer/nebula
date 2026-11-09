@@ -9,36 +9,36 @@
 class ModelData;
 class Model;
 class Material;
-class JUTTexture;
+class GameTexture;
 
 
 namespace MR {
     void setupScreen2D();
     void drawScreenColor(const NebulaColor8& rColor);
-    void drawScreenPicture(const JUTTexture& rTexture);
+    void drawScreenPicture(const GameTexture& rTexture);
     void resetDrawState();
     void loadViewMtxFor2DModel();
     void drawInitFor2DModel();
     void setDefaultViewportAndScissor();
     void loadProjectionMtxFor2D();
-    void setupDrawForNW4RLayout(f32, bool);
+    void setupDrawForLayout();
     void clearZBuffer();
     void clearStencil();
     // A fill's material, under an orthographic projection of the screen.
     SiteMaterial fillScreenSetup(const NebulaColor8&, bool opaque = false);
-    void fillScreenArea(TypedDraw&, const Vec2s&, const Vec2s&);
+    // The rectangle from rMin to rMax, screen units.
+    void fillScreenArea(TypedDraw&, const Vec2f& rMin, const Vec2f& rMax);
     void fillScreen(const NebulaColor8&, bool opaque = false);
     // The volume draws' colour (runtime/src/render/materials/flat_color.hlsl), their blending, depth, culling and
     // writes as the drawing state has them (each pass sets them).
     void initShadowVolumeMaterial(SiteMaterial& rMaterial, const NebulaColor8& rColor);
     void fillSilhouetteColor();
-    const JUTTexture* getMarioShadowTex();
-    const JUTTexture* getMarioShadowTexForLoad();
+    const GameTexture* getMarioShadowTex();
+    const GameTexture* getMarioShadowTexForLoad();
     const Vec3f& getMarioShadowVec();
-    void setMarioShadowTex(const JUTTexture*);
+    void setMarioShadowTex(const GameTexture*);
     void setMarioShadowVec(const Vec3f&);
-    void loadTexProjectionMtx(u32);
-    // The camera's projection to screen texture coordinates (s, t, q from a world position) loadTexProjectionMtx loads.
+    // The camera's projection to screen texture coordinates (s, t, q from a world position).
     void calcTexProjectionMtx(Pos3f*);
     void simpleDraw(Model*, Material*);
     void activateGameSceneDraw3D();

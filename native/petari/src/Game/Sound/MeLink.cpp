@@ -3,24 +3,17 @@
 #include "Game/Sound/SoundMemory.hpp"
 
 SoundCommand& MeLink::next(u16 kind) {
-    SoundCommand& rCommand = SoundEngine::get()->ring().next();
-    rCommand.mKind = kind;
-    rCommand.mArg = 0;
-    rCommand.mValue = 0;
-    rCommand.mTarget = mPlayer;
-    return rCommand;
+    return SoundEngine::get()->ring().next(kind, mPlayer);
 }
 
 u64 MeLink::send() {
-    SoundRing& rRing = SoundEngine::get()->ring();
-    rRing.send();
-    return rRing.sent();
+    return SoundEngine::get()->ring().send();
 }
 
 // Running from the start.
-void MeLink::start(u32 tracks, const u8* pData, u32 start, const SoundParams& rSound) {
-    mMemory = SoundMemory::alloc(MePlayer::bytes(tracks));
-    mPlayer = MePlayer::create(mMemory, tracks);
+void MeLink::start(u32 tracks, u32 stack, const u8* pData, u32 start, const SoundParams& rSound) {
+    mMemory = SoundMemory::alloc(MePlayer::bytes(tracks, stack));
+    mPlayer = MePlayer::create(mMemory, tracks, stack);
     mStart = start;
     MeStartCommand command;
     command.mData = pData;
@@ -32,9 +25,7 @@ void MeLink::start(u32 tracks, const u8* pData, u32 start, const SoundParams& rS
 }
 
 void MeLink::frame(const SoundParams& rSound) {
-    SoundCommand& rCommand = next(SOUND_ME_PARAMS);
-    rCommand.mArg = 1;
-    rCommand.payload< SoundParams >() = rSound;
+    next(SOUND_ME_PARAMS).payload< SoundParams >() = rSound;
     send();
 }
 

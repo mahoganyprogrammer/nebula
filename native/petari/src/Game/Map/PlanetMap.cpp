@@ -30,7 +30,7 @@ namespace {
 };  // namespace
 
 PlanetMap::PlanetMap(const char* pName, const char* pModelName)
-    : LiveActor(pName), mModelName(pModelName), mClippingCenter(0.0f, 0.0f, 0.0f), mLODCtrl(), mBloomModel(), mWaterModel(), mIndirectModel() {
+    : LiveActor(pName), mModelName(pModelName), mClippingCenter(0.0f, 0.0f, 0.0f), mLODCtrl(), mBloomModel() {
 }
 
 void PlanetMap::init(const TableIter& rIter) {
@@ -123,8 +123,8 @@ void PlanetMap::initModel(const char* pModelName, const TableIter& rIter) {
     f32 farClippingDistance = getFarClipDistance();
     mLODCtrl = MR::createLodCtrlPlanet(this, rIter, farClippingDistance);
     initBloomModel(pModelName);
-    mWaterModel = MR::createWaterModel(this, nullptr);
-    mIndirectModel = MR::createIndirectPlanetModel(this, nullptr);
+    MR::createWaterModel(this, nullptr);
+    MR::createIndirectPlanetModel(this, nullptr);
 }
 
 void PlanetMap::initBloomModel(const char* pModelName) {
@@ -179,9 +179,6 @@ bool PlanetMap::tryDeleteMyEffect() {
 FurPlanetMap::FurPlanetMap(const char* pName) : PlanetMap(pName, nullptr) {
 }
 
-PlanetMap::~PlanetMap() {
-}
-
 void FurPlanetMap::init(const TableIter& rIter) {
     PlanetMap::init(rIter);
     MR::initFurPlanet(this);
@@ -193,11 +190,6 @@ RailPlanetMap::RailPlanetMap(const char* pName) : PlanetMap(pName, nullptr) {
 void RailPlanetMap::init(const TableIter& rIter) {
     PlanetMap::init(rIter);
     initRailRider(rIter);
-}
-
-FurPlanetMap::~FurPlanetMap() {
-}
-RailPlanetMap::~RailPlanetMap() {
 }
 
 f32 PlanetMap::getFarClipDistance() const {

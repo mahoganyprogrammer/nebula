@@ -20,6 +20,7 @@
 
 #include "galaxy/atomic_file.h"
 #include "galaxy/run_options.h"
+#include "galaxy/game_step.h"
 #include "../../tools/test_driver/switches.h"
 #include "galaxy/disc_files.h"
 #include "galaxy/save_files.h"
@@ -46,7 +47,6 @@
 #include "galaxy/game_paths.h"
 #include "galaxy/native_input.h"
 #include "galaxy/loss_report.h"
-#include "galaxy/movie_video.h"
 #if defined(NEBULA_HOST_RENDERER) && defined(_WIN32)
 #include "galaxy/render/host_window_win32.h"
 #endif
@@ -86,7 +86,7 @@
 namespace galaxy::host {
 // The headless host gives the platform no performance hints.
 inline void perf_hint_add_current_thread() noexcept {}
-inline int64_t perf_hint_retrace() noexcept { return 0; }
+inline int64_t perf_hint_frame_done() noexcept { return 0; }
 }  // namespace galaxy::host
 #endif
 #if defined(NEBULA_HOST_SDL)
@@ -357,9 +357,6 @@ std::atomic<uint32_t> gFileReads{0};
 std::atomic<uint32_t> gSaveOps{0};
 std::atomic<uint32_t> gSoundBlocks{0};
 std::atomic<uint32_t> gSoundSubframes{0};
-std::atomic<uint32_t> gMovieFrames{0};
-std::atomic<uint64_t> gMovieDecodeNs{0};   // the movie decoder's time (svc_movie_video_decode)
-std::atomic<uint32_t> gMovieSkipped{0};    // movie frames not decoded: a replacement video showed instead
 std::atomic<uint32_t> gSceneBegins{0};
 
 void* find_symbol(void* module, const char* name) {
@@ -695,9 +692,9 @@ void audio_frame_tick() {
 }
 
 #if defined(_WIN32) && defined(NEBULA_HOST_RENDERER) && !defined(NEBULA_HOST_SDL)
-// The display's retraces by the compositor's clock, looked at twice a second.
-std::optional<galaxy::host::Retraces> display_retraces() {
-    static std::optional<galaxy::host::Retraces> known;
+// The display's refreshes by the compositor's clock, looked at twice a second.
+std::optional<galaxy::host::DisplayRefresh> display_refresh() {
+    static std::optional<galaxy::host::DisplayRefresh> known;
     static int64_t earlier_vblank_ns = 0;
     static uint32_t frames = 0;
     if (frames++ % 30u != 0u) return known;
@@ -712,8 +709,8 @@ std::optional<galaxy::host::Retraces> display_retraces() {
             const uint64_t part = qpc % static_cast<uint64_t>(frequency.QuadPart);
             return static_cast<int64_t>(whole * 1000000000ull + part * 1000000000ull / static_cast<uint64_t>(frequency.QuadPart));
         };
-        const galaxy::host::Retraces now{to_ns(timing.qpcVBlank), to_ns(timing.qpcRefreshPeriod)};
-        if (earlier_vblank_ns != 0 && galaxy::host::retraces_in_step(earlier_vblank_ns, now)) known = now;
+        const galaxy::host::DisplayRefresh now{to_ns(timing.qpcVBlank), to_ns(timing.qpcRefreshPeriod)};
+        if (earlier_vblank_ns != 0 && galaxy::host::refreshes_in_step(earlier_vblank_ns, now)) known = now;
         earlier_vblank_ns = now.vblank_ns;
     }
     return known;
@@ -727,7 +724,7 @@ Clock::time_point next_frame_start(Clock::time_point start, std::chrono::nanosec
     const int64_t present_ns = galaxy::render::g_last_present_ns.load(std::memory_order_relaxed);
     const int64_t work_ns = previous_ns != 0 && present_ns > previous_ns ? present_ns - previous_ns : 0;
     previous_ns = start_ns;
-    const int64_t next_ns = phase.next_start(start_ns, work_ns, period.count(), display_retraces());
+    const int64_t next_ns = phase.next_start(start_ns, work_ns, period.count(), display_refresh());
     return start + std::chrono::nanoseconds(next_ns - start_ns);
 }
 #endif
@@ -737,7 +734,7 @@ Clock::time_point next_frame_start(Clock::time_point start, std::chrono::nanosec
 // frame follows the display's own vsync (every second one at 120 Hz), so frames never drift against it and each
 // stays on screen for the same time; the host's clock takes over where the display gives none.
 void svc_frame_wait(void*) {
-    const auto display_period = std::chrono::nanoseconds(1000000000ull / 60);
+    const auto display_period = std::chrono::nanoseconds(galaxy::kGameStepNs);
     static auto period = gBootFast.load(std::memory_order_relaxed) ? std::chrono::nanoseconds(kBootPeriod) : display_period;
     static auto next = Clock::now() + period;
 #if defined(NEBULA_HOST_SDL)
@@ -749,7 +746,7 @@ void svc_frame_wait(void*) {
 #endif
     for (;;) {
 #if defined(NEBULA_HOST_SDL)
-        const bool vsync = galaxy::sdl::wait_display_retrace(period.count(), vsync_ns);
+        const bool vsync = galaxy::sdl::wait_display_frame(period.count(), vsync_ns);
         if (!vsync) {
             sleep_until_precise(next);
         }
@@ -761,7 +758,7 @@ void svc_frame_wait(void*) {
             continue;
         }
         // The last frame's work (the game and render threads' CPU time), to the performance hints (Android).
-        [[maybe_unused]] const int64_t work = galaxy::host::perf_hint_retrace();
+        [[maybe_unused]] const int64_t work = galaxy::host::perf_hint_frame_done();
         if (period != display_period && !gBootFast.load(std::memory_order_relaxed)) {
             period = display_period;
         }
@@ -804,7 +801,7 @@ void svc_test_frame_step(void*) {
         ticks_per_second = gAiRunning ? gSoundTicksPerSecond : 0u;
     }
     if (ticks_per_second != 0u) {
-        due_ns += 1e9 / 60.0;
+        due_ns += 1e9 / galaxy::kGameStepRate;
         const double period_ns = 1e9 / ticks_per_second;
         while (due_ns >= period_ns) {
             due_ns -= period_ns;
@@ -1499,19 +1496,49 @@ uint64_t svc_stat_get(void*, const char* name) {
 }
 
 #if defined(NEBULA_HOST_RENDERER)
-// UTF-8 text into a fixed field, cut at a whole character, always terminated.
-template <std::size_t N>
-void copy_settings_text(char (&field)[N], const std::string& text) {
-    std::size_t length = std::min(text.size(), N - 1u);
-    while (length > 0u && length < text.size() && (static_cast<unsigned char>(text[length]) & 0xC0u) == 0x80u) {
-        --length;
-    }
-    std::memcpy(field, text.data(), length);
-    field[length] = '\0';
-}
+// The settings view as the game was last given it. The host owns the strings, the page names and the rows that
+// NebulaSettingsView points at; they stay as they are until the content changes, and the revision counts the changes.
+struct SettingsRowContent {
+    std::string label;
+    std::string value;
+    uint32_t flags = 0;
+    uint16_t slider_steps = 0;
+    uint16_t slider_at = 0;
+    bool operator==(const SettingsRowContent&) const = default;
+};
+
+struct SettingsContent {
+    uint32_t open = 0;
+    uint32_t page = 0;
+    uint32_t controls_page = 0;
+    uint32_t input = 0;
+    uint32_t selected = 0;
+    uint32_t selected_button = 0;
+    uint32_t mod_list_count[2] = {0, 0};
+    uint32_t status = 0;
+    int32_t status_number = 0;
+    std::vector<std::string> pages;
+    std::vector<SettingsRowContent> rows;
+    std::string help;
+    std::string status_text;
+    std::string long_text;
+    bool operator==(const SettingsContent&) const = default;
+};
+
+struct SettingsViewStorage {
+    SettingsContent content;
+    bool built = false;
+    uint32_t revision = 0;
+    // What the view points at, made from the content whenever it changes.
+    std::vector<const char*> page_names;
+    std::vector<NebulaSettingsRow> rows;
+};
+
+SettingsViewStorage g_settings_view;
 #endif
 
 #if defined(NEBULA_HOST_RENDERER)
+static_assert(galaxy::kGameStepsPerSecond == NEBULA_STEPS_PER_SECOND, "the game and the host step at one rate");
 static_assert(static_cast<uint32_t>(galaxy::render::NativeSettingsStatus::Preparing) == NEBULA_SETTINGS_STATUS_PREPARING &&
               static_cast<uint32_t>(galaxy::render::NativeSettingsStatus::Arrange) == NEBULA_SETTINGS_STATUS_ARRANGE &&
               static_cast<uint32_t>(galaxy::render::NativeSettingsStatus::Leave) == NEBULA_SETTINGS_STATUS_LEAVE &&
@@ -1540,59 +1567,79 @@ static_assert(static_cast<uint32_t>(galaxy::render::NativeSettingsInput::Open) =
 #endif
 
 // The settings menu for the game's own (NebulaSettingsMenu): the overlay's state, which the game draws from then on.
-// The headless host has no settings menu: always closed.
+// The strings, the page names and the rows are held here, whole, until the next call. The revision changes whenever the
+// content differs from the previous call's. The headless host has no settings menu: always closed, nothing pointed at.
 void svc_settings_view(void*, NebulaSettingsView* view) {
     std::memset(view, 0, sizeof(*view));
 #if defined(NEBULA_HOST_RENDERER)
     const galaxy::render::NativeSettingsView source = galaxy::render::native_settings_view();
-    view->open = source.open ? 1u : 0u;
-    view->page = source.page;
-    view->page_count = static_cast<uint32_t>(std::min<std::size_t>(source.pages.size(), NEBULA_SETTINGS_PAGES));
-    for (uint32_t i = 0; i < view->page_count; ++i) {
-        copy_settings_text(view->pages[i], source.pages[i]);
-    }
-    view->controls_page = source.controls_page;
-    view->input = source.input;
-    // A long page (many mods) is sent in part: the rows around the selection, more than the menu shows at once.
+    SettingsContent next;
+    next.open = source.open ? 1u : 0u;
+    next.page = source.page;
+    next.pages = source.pages;
+    next.controls_page = source.controls_page;
+    next.input = source.input;
     const std::size_t total = source.rows.size();
     const std::size_t selected = std::min<std::size_t>(source.selected, total == 0u ? 0u : total - 1u);
-    const std::size_t first = total <= NEBULA_SETTINGS_ROWS
-                                  ? 0u
-                                  : std::min(selected - std::min<std::size_t>(selected, NEBULA_SETTINGS_ROWS / 2u),
-                                             total - NEBULA_SETTINGS_ROWS);
-    view->total_rows = static_cast<uint32_t>(total);
-    view->first_row = static_cast<uint32_t>(first);
-    view->row_count = static_cast<uint32_t>(std::min<std::size_t>(total - first, NEBULA_SETTINGS_ROWS));
-    for (uint32_t i = 0; i < view->row_count; ++i) {
-        const galaxy::render::NativeSettingsViewRow& row = source.rows[first + i];
-        copy_settings_text(view->rows[i].label, row.label);
-        copy_settings_text(view->rows[i].value, row.value);
-        view->rows[i].flags = (row.heading ? NEBULA_SETTINGS_ROW_HEADING : 0u) |
-                              (row.changes ? NEBULA_SETTINGS_ROW_CHANGES : 0u) | (row.name ? NEBULA_SETTINGS_ROW_NAME : 0u) |
-                              (row.active ? NEBULA_SETTINGS_ROW_ACTIVE : 0u) |
-                              (row.label_name ? NEBULA_SETTINGS_ROW_LABEL_NAME : 0u) |
-                              (row.buttons ? NEBULA_SETTINGS_ROW_BUTTONS : 0u) |
-                              (row.mod_list == 1u ? NEBULA_SETTINGS_ROW_MOD_OFF : 0u) |
-                              (row.mod_list == 2u ? NEBULA_SETTINGS_ROW_MOD_ON : 0u) | (row.held ? NEBULA_SETTINGS_ROW_HELD : 0u) |
-                              (row.slider_steps != 0u ? NEBULA_SETTINGS_ROW_SLIDER : 0u) |
-                              (row.inputs ? NEBULA_SETTINGS_ROW_BINDING : 0u) |
-                              (row.shared ? NEBULA_SETTINGS_ROW_SHARED : 0u);
-        view->rows[i].slider_steps = static_cast<uint16_t>(row.slider_steps);
-        view->rows[i].slider_at = static_cast<uint16_t>(row.slider_at);
-    }
-    view->selected = static_cast<uint32_t>(selected);
-    view->selected_button = source.selected_button;
+    next.rows.reserve(total);
     for (std::size_t r = 0; r < total; ++r) {
         const galaxy::render::NativeSettingsViewRow& row = source.rows[r];
-        if (row.mod_list == 0u || row.mod_list > 2u || row.heading) continue;
-        if (r < first) ++view->mod_list_first[row.mod_list - 1u];
-        ++view->mod_list_count[row.mod_list - 1u];
+        SettingsRowContent& out = next.rows.emplace_back();
+        out.label = row.label;
+        out.value = row.value;
+        out.flags = (row.heading ? NEBULA_SETTINGS_ROW_HEADING : 0u) |
+                    (row.changes ? NEBULA_SETTINGS_ROW_CHANGES : 0u) | (row.name ? NEBULA_SETTINGS_ROW_NAME : 0u) |
+                    (row.active ? NEBULA_SETTINGS_ROW_ACTIVE : 0u) |
+                    (row.label_name ? NEBULA_SETTINGS_ROW_LABEL_NAME : 0u) |
+                    (row.buttons ? NEBULA_SETTINGS_ROW_BUTTONS : 0u) |
+                    (row.mod_list == 1u ? NEBULA_SETTINGS_ROW_MOD_OFF : 0u) |
+                    (row.mod_list == 2u ? NEBULA_SETTINGS_ROW_MOD_ON : 0u) | (row.held ? NEBULA_SETTINGS_ROW_HELD : 0u) |
+                    (row.slider_steps != 0u ? NEBULA_SETTINGS_ROW_SLIDER : 0u) |
+                    (row.inputs ? NEBULA_SETTINGS_ROW_BINDING : 0u) |
+                    (row.shared ? NEBULA_SETTINGS_ROW_SHARED : 0u);
+        out.slider_steps = static_cast<uint16_t>(row.slider_steps);
+        out.slider_at = static_cast<uint16_t>(row.slider_at);
+        if (row.mod_list != 0u && row.mod_list <= 2u && !row.heading) ++next.mod_list_count[row.mod_list - 1u];
     }
-    copy_settings_text(view->help, source.help);
-    view->status = static_cast<uint32_t>(source.status);
-    view->status_number = source.status_number;
-    copy_settings_text(view->status_text, source.status_text);
-    copy_settings_text(view->long_text, source.long_text);
+    next.selected = static_cast<uint32_t>(selected);
+    next.selected_button = source.selected_button;
+    next.help = source.help;
+    next.status = static_cast<uint32_t>(source.status);
+    next.status_number = source.status_number;
+    next.status_text = source.status_text;
+    next.long_text = source.long_text;
+
+    SettingsViewStorage& held = g_settings_view;
+    if (!held.built || !(next == held.content)) {
+        held.content = std::move(next);
+        held.built = true;
+        ++held.revision;
+        held.page_names.clear();
+        for (const std::string& name : held.content.pages) held.page_names.push_back(name.c_str());
+        held.rows.clear();
+        for (const SettingsRowContent& row : held.content.rows) {
+            held.rows.push_back(NebulaSettingsRow{row.label.c_str(), row.value.c_str(), row.flags, row.slider_steps, row.slider_at});
+        }
+    }
+    const SettingsContent& content = held.content;
+    view->open = content.open;
+    view->page = content.page;
+    view->page_count = static_cast<uint32_t>(held.page_names.size());
+    view->pages = held.page_names.data();
+    view->controls_page = content.controls_page;
+    view->input = content.input;
+    view->revision = held.revision;
+    view->total_rows = static_cast<uint32_t>(held.rows.size());
+    view->rows = held.rows.data();
+    view->selected = content.selected;
+    view->selected_button = content.selected_button;
+    view->mod_list_count[0] = content.mod_list_count[0];
+    view->mod_list_count[1] = content.mod_list_count[1];
+    view->help = content.help.c_str();
+    view->status = content.status;
+    view->status_number = content.status_number;
+    view->status_text = content.status_text.c_str();
+    view->long_text = content.long_text.c_str();
 #endif
 }
 
@@ -1616,12 +1663,12 @@ void svc_sharp_2d(void*, uint32_t on) {
 #endif
 }
 
-void svc_movie_frame(void*, const char* name, int32_t frame, float frame_rate, uint32_t y, uint32_t u, uint32_t v,
+void svc_movie_frame(void*, const char* name, int32_t frame, float frame_rate, const void* data, uint64_t size,
                      uint32_t width, uint32_t height) {
 #if defined(NEBULA_HOST_RENDERER)
-    galaxy::render::attach_movie_frame(name, frame, frame_rate, y, u, v, width, height);
+    galaxy::render::attach_movie_frame(name, frame, frame_rate, data, size, width, height);
 #else
-    (void)name, (void)frame, (void)frame_rate, (void)y, (void)u, (void)v, (void)width, (void)height;
+    (void)name, (void)frame, (void)frame_rate, (void)data, (void)size, (void)width, (void)height;
 #endif
 }
 
@@ -1638,7 +1685,7 @@ int64_t svc_calendar_ns(void*) {
     if (deterministic_mode()) {
         // A fixed date (2026-01-01 from 2000-01-01), then the frames' time.
         constexpr int64_t kFixedDate = 820454400;
-        return kFixedDate * 1000000000ll + static_cast<int64_t>(gDeterministicFrames.load(std::memory_order_relaxed)) * 1000000000ll / 60;
+        return kFixedDate * 1000000000ll + static_cast<int64_t>(gDeterministicFrames.load(std::memory_order_relaxed)) * galaxy::kGameStepNs;
     }
     const auto now = std::chrono::system_clock::now();
     const std::time_t seconds = std::chrono::system_clock::to_time_t(now);
@@ -1761,8 +1808,8 @@ uint32_t svc_texture_table(void*, const NebulaFrameTexture* list, uint32_t count
 uint32_t svc_material_register(void*, const float (*rows)[4], uint32_t vertex_rows, uint32_t pixel_rows) {
     return galaxy::render::registries().material_register(rows, vertex_rows, pixel_rows);
 }
-uint32_t svc_pipeline_register(void*, const NebulaPipelineDesc* desc) {
-    return galaxy::render::registries().pipeline_register(*desc);
+uint32_t svc_pipeline_register(void*, const NebulaPipelineDesc* desc, const NebulaLayoutInput* inputs) {
+    return galaxy::render::registries().pipeline_register(*desc, inputs);
 }
 void svc_texture_hd(void*, uint32_t texture, const void* hd) {
     galaxy::render::textures().set_built_in(texture, hd);
@@ -1804,7 +1851,7 @@ uint32_t svc_texture_table(void*, const NebulaFrameTexture*, uint32_t) {
 uint32_t svc_material_register(void*, const float (*)[4], uint32_t, uint32_t) {
     return 0u;
 }
-uint32_t svc_pipeline_register(void*, const NebulaPipelineDesc*) {
+uint32_t svc_pipeline_register(void*, const NebulaPipelineDesc*, const NebulaLayoutInput*) {
     return 0u;
 }
 void svc_texture_hd(void*, uint32_t, const void*) {}
@@ -2098,7 +2145,7 @@ void svc_frame_begun(void*, int black, uint32_t frame) {
         const char* value = ::galaxy::run_options().trace_frame_times;
         return value != nullptr && value[0] != '\0' && value[0] != '0';
     }();
-    if (trace_vi) std::fprintf(stderr, "[latency] retrace vi=%u qpc=%lld\n", frame, static_cast<long long>(galaxy::qpc_now()));
+    if (trace_vi) std::fprintf(stderr, "[latency] frame vi=%u qpc=%lld\n", frame, static_cast<long long>(galaxy::qpc_now()));
 #endif
 #if defined(NEBULA_HOST_RENDERER)
 #if defined(_WIN32)
@@ -2343,9 +2390,9 @@ void svc_save_request(void*, const NebulaSaveRequest* request) {
             }
         }
 #if defined(__cpp_lib_atomic_ref)
-        std::atomic_ref<int32_t>(*const_cast<int32_t*>(r.status)).store(result, std::memory_order_release);
+        std::atomic_ref<int32_t>(*r.status).store(result, std::memory_order_release);
 #else  // libc++ without atomic_ref (Android NDK r28): the compiler's builtin, the same release store.
-        __atomic_store_n(const_cast<int32_t*>(r.status), result, __ATOMIC_RELEASE);
+        __atomic_store_n(r.status, result, __ATOMIC_RELEASE);
 #endif
         gSavesPending.fetch_sub(1, std::memory_order_acq_rel);
     };
@@ -2493,12 +2540,25 @@ galaxy::input::PlayerInput controls_input() {
 }
 #endif
 
+// The players svc_input_read serves: player 1's live controls, and with the renderer player 2 (co-star mode).
+enum HostPlayer : uint32_t {
+    kHostPlayerMain,
+#if defined(NEBULA_HOST_RENDERER)
+    kHostPlayerCoStar,
+#endif
+    kHostPlayers
+};
+
+uint32_t svc_input_players(void*) {
+    return kHostPlayers;
+}
+
 uint32_t svc_input_read(void*, uint32_t player, NebulaInputDevice* device, NebulaInputSample* sample) {
     if (device != nullptr) {
         *device = {};
 #if defined(NEBULA_HOST_RENDERER)
         // Player 2, when someone plays it (co-star mode): the pointer and its buttons, no move stick.
-        if (player == 1) {
+        if (player == kHostPlayerCoStar) {
             galaxy::input::PlayerInput co_star{};
             if (galaxy::host::native_game_co_star(&co_star)) {
                 device->connected = 1;
@@ -2511,7 +2571,7 @@ uint32_t svc_input_read(void*, uint32_t player, NebulaInputDevice* device, Nebul
             return 0;
         }
 #endif
-        if (player == 0) {
+        if (player == kHostPlayerMain) {
             device->connected = 1;
 #if defined(NEBULA_HOST_RENDERER)
             device->connected = gInputConnected.load(std::memory_order_relaxed);
@@ -3004,37 +3064,6 @@ void svc_app_restart(void*) {
     finish_and_exit(true);
 }
 
-#if defined(NEBULA_HOST_RENDERER)
-// A movie frame's video is one baseline JPEG; the decoder writes its planes as rows of texels for the renderer.
-int32_t svc_movie_video_decode(void*, const void* frame, uint32_t size, uint32_t width, uint32_t height, void* y, void* u, void* v) {
-    gMovieFrames.fetch_add(1, std::memory_order_relaxed);
-    if (galaxy::render::movie_replacement_showing()) {
-        // A replacement video's frames show in place of these planes: their decode would be unseen work.
-        gMovieSkipped.fetch_add(1, std::memory_order_relaxed);
-        return 0;
-    }
-    const auto decode_start = std::chrono::steady_clock::now();
-    struct DecodeTime {
-        std::chrono::steady_clock::time_point start;
-        ~DecodeTime() {
-            gMovieDecodeNs.fetch_add(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                         std::chrono::steady_clock::now() - start).count()),
-                                     std::memory_order_relaxed);
-        }
-    } decode_time{decode_start};
-    if (width == 0 || height == 0 || width > 4096 || height > 4096) {
-        return -1;
-    }
-    const size_t luma = size_t(width) * height;
-    const size_t chroma = size_t((width + 1u) / 2u) * ((height + 1u) / 2u);
-    return galaxy::movie::decode_video({static_cast<const uint8_t*>(frame), size}, static_cast<uint16_t>(width), static_cast<uint16_t>(height),
-                                       {static_cast<uint8_t*>(y), luma}, {static_cast<uint8_t*>(u), chroma}, {static_cast<uint8_t*>(v), chroma});
-}
-#else
-int32_t svc_movie_video_decode(void*, const void*, uint32_t, uint32_t, uint32_t, void*, void*, void*) {
-    return 0;
-}
-#endif
 
 }  // namespace
 
@@ -3642,6 +3671,7 @@ int main(int argc, char** argv) {
     services.input_read = svc_input_read;
     services.input_control = svc_input_control;
     services.speaker_samples = svc_speaker_samples;
+    services.input_players = svc_input_players;
     services.voices_setup = svc_audio_setup;
     services.voices_mix = svc_audio_mix;
     services.voices_frame = svc_audio_frame;
@@ -3650,7 +3680,6 @@ int main(int argc, char** argv) {
     services.movie_audio_control = svc_movie_audio_control;
     services.sound_clock = svc_audio_control;
     services.hbm = svc_hbm;
-    services.movie_video_decode = svc_movie_video_decode;
     services.game_context = svc_game_context;
     services.app_exit = svc_app_exit;
     services.app_restart = svc_app_restart;
@@ -3830,19 +3859,12 @@ int main(int argc, char** argv) {
                           gFileReads.load(std::memory_order_relaxed), gSaveOps.load(std::memory_order_relaxed),
                           gSoundBlocks.load(std::memory_order_relaxed), gSoundSubframes.load(std::memory_order_relaxed));
 #if defined(NEBULA_HOST_RENDERER)
-            if (frames / 60 % 30 == 0) {
+            if (frames / galaxy::kGameStepsPerSecond % 30 == 0) {
                 log_line("host:", ("jaudio " + gAudio->stats_line()).c_str());
             }
             const size_t length = std::strlen(text);
-            static uint64_t last_decode_ns = 0;
-            const uint64_t decode_ns = gMovieDecodeNs.load(std::memory_order_relaxed);
-            std::snprintf(text + length, sizeof(text) - length,
-                          ", renderer frames %llu, movie frames %u (decoded in %.1f ms/s, %u replaced)",
-                          (unsigned long long)gSubmissions.load(std::memory_order_relaxed),
-                          gMovieFrames.load(std::memory_order_relaxed),
-                          static_cast<double>(decode_ns - last_decode_ns) / 1.0e6,
-                          gMovieSkipped.load(std::memory_order_relaxed));
-            last_decode_ns = decode_ns;
+            std::snprintf(text + length, sizeof(text) - length, ", renderer frames %llu",
+                          (unsigned long long)gSubmissions.load(std::memory_order_relaxed));
 #endif
 #if defined(_WIN32)
             if (trace_thread_cpu) {

@@ -29,7 +29,12 @@ constexpr RegisterBinding kDrawBindings[] = {
     {"b2", 0, 2},
     {"t16", 0, 3},
     {"t17", 0, 4},
+    {"t18", 0, 5},
     {"b3", 0, 0, true},
+    // Set 1 the images and set 2 the samplers, as one array each over every texture and sampler (space1) or as a bound
+    // table (program.hlsli).
+    {"t0, space1", 1, 0},
+    {"s0, space1", 2, 0},
     {"t0", 1, 0},
     {"s0", 2, 0},
 };
@@ -70,8 +75,10 @@ std::string spirv_string(const std::vector<std::uint32_t>& spirv, std::size_t fi
 }
 
 // A semantic's location, as D3D12 matches stages by semantic: vertex attributes
-// (POSITION 0, NORMAL 1, TANGENT 2, BINORMAL 3, COLOR0-1 4-5, TEXCOORD0-15 6-21, BLENDINDICES0 22, POSITION1 23, BLENDINDICES1 24);
-// between stages COLOR0-1 at 0-1 and TEXCOORD0-20 at 2-22; pixel outputs
+// (POSITION 0, NORMAL 1, TANGENT 2, BINORMAL 3, COLOR0-1 4-5, BLENDINDICES0 6, POSITION1 7, BLENDINDICES1 8, then
+// TEXCOORDn at 9 + n, as many as the program names);
+// between stages COLOR0-1 at 0-1 and TEXCOORDn at 2 + n (the program's coordinates, then the lit and motion varyings
+// its text numbers after them); pixel outputs
 // SV_TARGETn at n. `element`: the variable's element of an
 // array declared with this semantic, which takes the following indices.
 std::optional<std::uint32_t> semantic_location(std::string semantic, std::uint32_t element, bool vertex_input,
@@ -95,15 +102,15 @@ std::optional<std::uint32_t> semantic_location(std::string semantic, std::uint32
         if (name == "TANGENT" && index == 0u) return 2u;
         if (name == "BINORMAL" && index == 0u) return 3u;
         if (name == "COLOR" && index < 2u) return 4u + index;
-        if (name == "TEXCOORD" && index < NEBULA_MATERIAL_SLOTS) return 6u + index;
-        if (name == "BLENDINDICES" && index == 0u) return 6u + NEBULA_MATERIAL_SLOTS;
-        if (name == "BLENDINDICES" && index == 1u) return 8u + NEBULA_MATERIAL_SLOTS;
-        if (name == "POSITION" && index == 1u) return 7u + NEBULA_MATERIAL_SLOTS;
-        if (name == "BEND" && index == 0u) return 7u + NEBULA_MATERIAL_SLOTS;
+        if (name == "BLENDINDICES" && index == 0u) return 6u;
+        if (name == "POSITION" && index == 1u) return 7u;
+        if (name == "BEND" && index == 0u) return 7u;
+        if (name == "BLENDINDICES" && index == 1u) return 8u;
+        if (name == "TEXCOORD") return 9u + index;
         return std::nullopt;
     }
     if (name == "COLOR" && index < 2u) return index;
-    if (name == "TEXCOORD" && index <= NEBULA_MOTION_PREVIOUS_INDEX) return 2u + index;
+    if (name == "TEXCOORD") return 2u + index;
     return std::nullopt;
 }
 
@@ -308,6 +315,11 @@ std::vector<std::uint32_t> compile_hlsl(std::string_view hlsl, ShaderStage stage
     // Constant-buffer matrices are row-major, as the D3D12 compile's D3DCOMPILE_PACK_MATRIX_ROW_MAJOR: the shared code
     // writes them row by row and the shaders multiply mul(matrix, vector).
     std::string preamble = "#define NEBULA_VULKAN 1\n#pragma pack_matrix(row_major)\n";
+    if (compile_options.bound_tables) {
+        // A device without descriptor indexing: each draw binds its own table of maps (program.hlsli); else the arrays are
+        // runtime-sized (OpTypeRuntimeArray, capability RuntimeDescriptorArray).
+        preamble += "#define NEBULA_BOUND_TABLES 1\n#define NEBULA_TABLE_SLOTS " + std::to_string(kBoundTableSlots) + "\n";
+    }
     for (const char* define : defines) {
         const char* equals = std::strchr(define, '=');
         if (equals == nullptr) {

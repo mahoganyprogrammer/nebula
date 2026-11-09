@@ -1,4 +1,5 @@
 #include "Game/NPC/CometEventKeeper.hpp"
+#include "Game/System/NebulaFrameClock.hpp"
 #include "Game/LiveActor/Nerve.hpp"
 #include "Game/NPC/CometEventExecutorTimeLimit.hpp"
 #include "Game/Screen/GalaxyCometScreenFilter.hpp"
@@ -22,7 +23,7 @@ namespace {
     };
 };  // namespace
 
-CometEventKeeper::CometEventKeeper() : mExecutorTimeLimit(nullptr), mScreenFilter(nullptr), mCometName(nullptr), mCometStateIndex(0) {
+CometEventKeeper::CometEventKeeper() : mExecutorTimeLimit(nullptr), mScreenFilter(nullptr), mCometName(nullptr){
 }
 
 void CometEventKeeper::init() {
@@ -30,7 +31,7 @@ void CometEventKeeper::init() {
 
     if (isStartEvent("Red") || isStartEvent("Black")) {
         const u32 modLimit = NebulaMods::cometTimeLimit(MR::getCurrentStageName(), MR::getCurrentScenarioNo());
-        mExecutorTimeLimit = new CometEventExecutorTimeLimit((modLimit != 0 ? modLimit : getTimeLimitFromTable(::sTimeLimitInfoTable, ARRAY_SIZE(::sTimeLimitInfoTable))) / 60);
+        mExecutorTimeLimit = new CometEventExecutorTimeLimit((modLimit != 0 ? modLimit : getTimeLimitFromTable(::sTimeLimitInfoTable, ARRAY_SIZE(::sTimeLimitInfoTable))) / static_cast< s32 >(NebulaFrameClock::cStepsPerSecond));
         mExecutorTimeLimit->initWithoutIter();
         mExecutorTimeLimit->kill();
     }
@@ -78,7 +79,7 @@ u32 CometEventKeeper::getTimeLimitFromTable(const GalaxyTimeLimitInfo* pTable, i
             continue;
         }
 
-        return pInfo->mTimeLimit * 60;
+        return NebulaFrameClock::stepsOfSeconds(pInfo->mTimeLimit);
     }
 
     return 0;
@@ -86,5 +87,4 @@ u32 CometEventKeeper::getTimeLimitFromTable(const GalaxyTimeLimitInfo* pTable, i
 
 void CometEventKeeper::initCometStatus() {
     mCometName = MR::makeCurrentGalaxyStatusAccessor().getCometName(MR::getCurrentScenarioNo());
-    mCometStateIndex = MR::getGalaxyCometStateIndexInCurrentStage();
 }

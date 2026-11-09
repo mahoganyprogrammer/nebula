@@ -394,6 +394,7 @@ void TextureStore::begin_frame(unsigned frame_slot, unsigned frames_in_flight) {
     // The renderer has waited for this slot's fence: what it retired and read is idle.
     for (Retired& retired : retired_[frame_slot]) {
         if (retired.view != ~0u) {
+            backend_.release_view(retired.view);
             free_srv_indices_.push_back(retired.view);
         }
     }
@@ -686,6 +687,7 @@ TextureHandle TextureStore::handle(std::uint32_t id) {
 void TextureStore::retire(gpu::TextureRef texture, std::uint32_t view) {
     if (retired_.empty()) {
         if (view != ~0u) {
+            backend_.release_view(view);
             free_srv_indices_.push_back(view);
         }
         return;
@@ -838,7 +840,7 @@ void TextureStore::apply_texture_packs() {
     }
 }
 
-void TextureStore::set_movie_override(const MovieFrameMark& mark, const MovieReplacementFrame* frame) {
+void TextureStore::set_movie_override(const MovieFrameMark& mark, const MovieFrame* frame) {
     if (frame == nullptr || mark.frame < 0 || !frame->staging || frame->width == 0u || frame->height == 0u) {
         if (movie_active_) {
             ++revision_;
@@ -848,7 +850,8 @@ void TextureStore::set_movie_override(const MovieFrameMark& mark, const MovieRep
         movie_staging_seen_ = nullptr;
         return;
     }
-    const std::array<std::uint32_t, 3> ids{mark.y, mark.u, mark.v};
+    // The movie quad's planes (nebula_game_api.h), never an image's id.
+    constexpr std::array<std::uint32_t, 3> ids{NEBULA_TEXTURE_MOVIE_Y, NEBULA_TEXTURE_MOVIE_U, NEBULA_TEXTURE_MOVIE_V};
     const bool new_picture = frame->frame != movie_frame_ || frame->staging.get() != movie_staging_seen_;
     const bool same_planes = movie_active_ && ids == movie_ids_ && mark.width == movie_handles_[0].width &&
                              mark.height == movie_handles_[0].height;

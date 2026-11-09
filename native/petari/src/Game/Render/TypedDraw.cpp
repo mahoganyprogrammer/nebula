@@ -3,6 +3,8 @@
 #include "Game/Render/ModelData.hpp"
 #include "Game/Render/Material.hpp"
 #include "Game/Render/RenderTexture.hpp"
+#include "Game/System/NebulaFrameClock.hpp"
+#include "Game/Render/GameTexture.hpp"
 #include <nebula_shader_rows.h>
 
 extern "C" const NebulaHostServices* nebula_host(void);
@@ -32,7 +34,7 @@ namespace SiteTextures {
 void SiteMaterial::init(NebulaShaderId shader, Blend blend, u8 depthFunc, bool depthWrite, u8 cull) {
     mCoordRows.clear();
     mTextureCount = 0;
-    memset(mTextures, 0, sizeof(mTextures));
+    mTextures.clear();
     mShader = shader;
     mState = PassStates::plain();
     mState.blend_op = blend == BLEND_OPAQUE ? NEBULA_BLEND_REPLACE : blend == BLEND_SUBTRACT ? NEBULA_BLEND_SUBTRACT : NEBULA_BLEND_ADD;
@@ -56,23 +58,8 @@ void SiteMaterial::setMatrix(u32 first, u32 index, const f32 (*pMtx)[4]) {
     }
 }
 
-void SiteMaterial::setTexture(u32 slot, const JUTTexture* pTexture) {
-    NebulaFrameTexture& rOut = mTextures[slot];
-    memset(&rOut, 0, sizeof(rOut));
-    rOut.texture = RenderTexture::idOf(pTexture->mImage);
-    rOut.wrap_s = pTexture->mWrapS;
-    rOut.wrap_t = pTexture->mWrapT;
-    const u8 minType = pTexture->mMinType;
-    rOut.mag_linear = pTexture->mMagType != 0 ? 1 : 0;
-    rOut.min_linear = minType == 1 || minType == 3 || minType == 5 ? 1 : 0;
-    rOut.mip_filter = minType < 2 ? 0 : minType < 4 ? 1 : 2;
-    rOut.anisotropy = pTexture->mTIMG->mMaxAnisotropy;
-    rOut.lod_bias = pTexture->mLodBias;
-    rOut.min_lod = pTexture->mMinLod;
-    rOut.max_lod = pTexture->mMaxLod;
-    if (mTextureCount <= slot) {
-        mTextureCount = slot + 1;
-    }
+void SiteMaterial::setTexture(u32 slot, const GameTexture* pTexture) {
+    setTexture(slot, pTexture->site());
 }
 
 void SiteTextures::toFrame(const SiteTexture& rTexture, NebulaFrameTexture* pOut) {
@@ -93,6 +80,14 @@ void SiteTextures::toFrame(const SiteTexture& rTexture, NebulaFrameTexture* pOut
 
 void SiteMaterial::setTexture(u32 slot, const SiteTexture& rTexture) {
     SiteTextures::toFrame(rTexture, &mTextures[slot]);
+    if (mTextureCount <= slot) {
+        mTextureCount = slot + 1;
+    }
+}
+
+void SiteMaterial::setTextureId(u32 slot, u32 id, const SiteTexture& rSampling) {
+    SiteTextures::toFrame(rSampling, &mTextures[slot]);
+    mTextures[slot].texture = id;
     if (mTextureCount <= slot) {
         mTextureCount = slot + 1;
     }
@@ -485,13 +480,13 @@ void TypedDraw::widen() {
     u32* pIndices = FrameRing::indices(segments * 6, &first);
     writeIndices(NEBULA_PRIMITIVE_QUADS, segments * 4, pIndices);
 
-    NebulaLayoutInput inputs[NEBULA_LAYOUT_MAX_INPUTS];
+    NebulaLayoutInput* inputs = Frame::layoutRoom(Frame::cLayoutRoomWiden, mLayoutCount + 2);
     for (u32 i = 0; i < mLayoutCount; i++) {
         inputs[i] = mLayout[i];
         inputs[i].stride = static_cast< u32 >(stride);
     }
-    inputs[mLayoutCount] = {NEBULA_INPUT_TANGENT, 0, 0, 0, static_cast< u32 >(mStride), static_cast< u32 >(stride)};
-    inputs[mLayoutCount + 1] = {NEBULA_INPUT_WIDEN, 0, 3, 0, static_cast< u32 >(mStride + 12), static_cast< u32 >(stride)};
+    inputs[mLayoutCount] = {NEBULA_INPUT_TANGENT, 0, 0, static_cast< u32 >(mStride), static_cast< u32 >(stride)};
+    inputs[mLayoutCount + 1] = {NEBULA_INPUT_WIDEN, 0, 3, static_cast< u32 >(mStride + 12), static_cast< u32 >(stride)};
 
     NebulaFrameItem& rItem = Frame::itemAt(mItem);
     rItem.mesh = stride;
@@ -503,8 +498,8 @@ void TypedDraw::widen() {
     rItem.flags = static_cast< u32 >(mFlags | NEBULA_ITEM_RING | NEBULA_ITEM_INDEXED | NEBULA_ITEM_WIDE |
                                      (mState.spread_lines ? NEBULA_ITEM_SPREAD_LINES : 0) |
                                      (mState.spread_points ? NEBULA_ITEM_SPREAD_POINTS : 0));
-    rItem.line_width = mState.line_width * (1.0f / 456.0f);
-    rItem.point_size = mState.point_size * (1.0f / 456.0f);
+    rItem.line_width = mState.line_width * (1.0f / NebulaFrameClock::cScreenHeight);
+    rItem.point_size = mState.point_size * (1.0f / NebulaFrameClock::cScreenHeight);
 }
 
 void TypedDraw::finish() {
@@ -514,30 +509,16 @@ void TypedDraw::finish() {
     }
 }
 
-namespace {
-    SiteMeshData* sLiveSiteMeshes;
-}
-
-SiteMeshData::SiteMeshData() : mId(0), mIndexCount(0), mStride(0), mVertexCount(0), mWritten(0), mVertices(nullptr), mIndices(nullptr), mNextLive(nullptr) {
+SiteMeshData::SiteMeshData() : mId(0), mIndexCount(0), mStride(0), mVertexCount(0), mWritten(0), mVertices(nullptr), mIndices(nullptr) {
 }
 
 SiteMeshData::~SiteMeshData() {
     if (mId != 0) {
         const NebulaHostServices* pHost = nebula_host();
         pHost->mesh_free(pHost->user, mId);
-        unlink();
     }
     delete[] mVertices;
     delete[] mIndices;
-}
-
-void SiteMeshData::unlink() {
-    for (SiteMeshData** ppAt = &sLiveSiteMeshes; *ppAt != nullptr; ppAt = &(*ppAt)->mNextLive) {
-        if (*ppAt == this) {
-            *ppAt = mNextLive;
-            return;
-        }
-    }
 }
 
 void SiteMeshData::initData(u32 stride, u32 maxVertices) {
@@ -584,24 +565,8 @@ void SiteMeshData::send() {
     delete[] mIndices;
     mVertices = nullptr;
     mIndices = nullptr;
-    mNextLive = sLiveSiteMeshes;
-    sLiveSiteMeshes = this;
 }
 
 void SiteMeshData::drawData(TypedDraw& rDraw, const NebulaLayoutInput* pInputs, u32 inputCount, u32 flags) const {
     rDraw.drawSiteMesh(mId, mIndexCount, mStride, pInputs, inputCount, flags);
-}
-
-void forgetSiteMeshes(const void* pStart, const void* pEnd) {
-    const NebulaHostServices* pHost = nebula_host();
-    for (SiteMeshData** ppAt = &sLiveSiteMeshes; *ppAt != nullptr;) {
-        SiteMeshData* pMesh = *ppAt;
-        if (pMesh >= pStart && pMesh < pEnd) {
-            pHost->mesh_free(pHost->user, pMesh->mId);
-            pMesh->mId = 0;
-            *ppAt = pMesh->mNextLive;
-        } else {
-            ppAt = &pMesh->mNextLive;
-        }
-    }
 }

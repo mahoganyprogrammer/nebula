@@ -1,4 +1,3 @@
-#include "Game/Util/SortUtil.hpp"
 #include <nebula_game_api.h>
 #include "Game/System/GameEventFlagTable.hpp"
 #include "Game/System/GalaxyInfoTable.hpp"
@@ -6,7 +5,6 @@
 #include "Game/Util/Table.hpp"
 #include "Game/Util/SingletonHolder.hpp"
 #include "Game/Util/StringUtil.hpp"
-#include <algorithm>
 
 namespace {
     GameEventFlag* sAddedFlags = nullptr;
@@ -208,12 +206,6 @@ namespace {
         {"[同期]クッパスタープラント発見", GameEventFlag::Type_StoryEventSync, 1, {0}, {0}, 0, {"PowerStarNumForButlerKoopaDemo"},
          {"クッパスタープラント発見"} /* クッパスタープラント発見 */},
     };
-
-    struct GameEventFlagSortLt {
-        bool operator()(GameEventFlagTableInstance::Key& key1, GameEventFlagTableInstance::Key& key2) {
-            return (key1.mHashCode < key2.mHashCode) ? true : false;
-        }
-    };
 };  // namespace
 
 bool GameEventFlagIter::isEnd() const {
@@ -242,47 +234,56 @@ bool GameEventFlagIter::isValid() const {
     }
 }
 
-GameEventFlagTableInstance::GameEventFlagTableInstance() : mSortTable(nullptr), mLength(0) {
-    initSortTable();
-}
+GameEventFlagTableInstance::GameEventFlagTableInstance() : mNextSpecial(nullptr) {
+    const s32 size = GameEventFlagTable::getTableSize();
+    mNames.reset(static_cast< u32 >(size));
+    mSaveHashes.reset(static_cast< u32 >(size));
+    mSpecialGalaxies.reset(static_cast< u32 >(size));
+    mNextSpecial = new u32[size > 0 ? size : 1];
+    // pLastSpecial[first]: the latest special star flag so far of the galaxy whose first one is first.
+    u32* pLastSpecial = new u32[size > 0 ? size : 1];
 
-const GameEventFlag* GameEventFlagTableInstance::findFlag(const char* flagName) {
-    int i;
-    u16 hashCode = MR::getHashCode(flagName);
-    i = mLength;
-    i = (i * 8) / 8;
-    GameEventFlagTableInstance::Key* key = mSortTable;
+    for (s32 i = 0; i < size; i++) {
+        const GameEventFlag* pFlag = GameEventFlagTable::getFlag(i);
+        mNames.add(pFlag->mName, static_cast< u32 >(i));
+        if ((pFlag->mSaveFlag & 0x1) == 0) {
+            mSaveHashes.add(pFlag->mName, GameEventFlagTable::getSaveHash(pFlag->mName), static_cast< u32 >(i));
+        }
 
-    while (i > 0) {
-        int mid = i / 2;
-
-        if (key[i / 2].mHashCode < hashCode) {
-            i -= mid + 1;
-            key = &key[mid] + 1;
-        } else {
-            i = mid;
+        mNextSpecial[i] = MR::NameIndex::cNoValue;
+        const GameEventFlagAccessor accessor(pFlag);
+        if (accessor.isTypeSpecialStar() && accessor.getGalaxyName() != nullptr) {
+            if (mSpecialGalaxies.add(accessor.getGalaxyName(), static_cast< u32 >(i))) {
+                pLastSpecial[i] = static_cast< u32 >(i);
+            } else {
+                const u32 first = mSpecialGalaxies.find(accessor.getGalaxyName());
+                mNextSpecial[pLastSpecial[first]] = static_cast< u32 >(i);
+                pLastSpecial[first] = static_cast< u32 >(i);
+            }
         }
     }
+    delete[] pLastSpecial;
+}
 
-    if (key->mHashCode == hashCode && MR::isEqualString(flagName, key->mFlag->mName)) {
-        return key->mFlag;
+const GameEventFlag* GameEventFlagTableInstance::findSpecialStar(const char* pGalaxyName, s32 starId, const char* pNamePart) const {
+    for (u32 i = mSpecialGalaxies.find(pGalaxyName); i != MR::NameIndex::cNoValue; i = mNextSpecial[i]) {
+        const GameEventFlag* pFlag = GameEventFlagTable::getFlag(static_cast< int >(i));
+        const GameEventFlagAccessor accessor(pFlag);
+        if (accessor.getStarId() == starId && (pNamePart == nullptr || MR::isEqualSubString(accessor.getName(), pNamePart))) {
+            return pFlag;
+        }
     }
-
     return nullptr;
 }
 
-void GameEventFlagTableInstance::initSortTable() {
-    mSortTable = new GameEventFlagTableInstance::Key[GameEventFlagTable::getTableSize()];
-    mLength = GameEventFlagTable::getTableSize();
+const GameEventFlag* GameEventFlagTableInstance::findFlag(const char* flagName) const {
+    const u32 index = mNames.find(flagName);
+    return index == MR::NameIndex::cNoValue ? nullptr : GameEventFlagTable::getFlag(static_cast< int >(index));
+}
 
-    for (int i = 0; i < mLength; i++) {
-        const GameEventFlag* pFlag = GameEventFlagTable::getFlag(i);
-
-        mSortTable[i].mFlag = pFlag;
-        mSortTable[i].mHashCode = MR::getHashCode(pFlag->mName);
-    }
-
-    MR::sort(&mSortTable[0], &mSortTable[mLength], GameEventFlagSortLt());
+s32 GameEventFlagTableInstance::findSaveIndex(u16 saveHash) const {
+    const u32 index = mSaveHashes.findHash(saveHash);
+    return index == MR::NameIndex::cNoValue ? -1 : static_cast< s32 >(index);
 }
 
 namespace GameEventFlagTable {
@@ -421,11 +422,17 @@ namespace GameEventFlagTable {
         return SingletonHolder< GameEventFlagTableInstance >::get()->findFlag(pFlagName);
     }
 
-    const char* getEventFlagNameSpecialPowerStar(const char* pGalaxyName, s32 starId) {
+    const GameEventFlag* findSpecialPowerStar(const char* pGalaxyName, s32 starId, const char* pNamePart) {
+        const GameEventFlagTableInstance* pInstance = SingletonHolder< GameEventFlagTableInstance >::get();
+        if (pInstance != nullptr) {
+            return pInstance->findSpecialStar(pGalaxyName, starId, pNamePart);
+        }
+
+        // Before the game data exists: the table itself.
         for (GameEventFlagIter iter = getBeginIter(); !iter.isEnd(); iter.goNext()) {
             GameEventFlagAccessor accessor = GameEventFlagAccessor(iter.getFlag());
 
-            if (!accessor.isTypeSpecialStar()) {
+            if (!accessor.isTypeSpecialStar() || accessor.getGalaxyName() == nullptr) {
                 continue;
             }
 
@@ -437,10 +444,19 @@ namespace GameEventFlagTable {
                 continue;
             }
 
-            return accessor.getName();
+            if (pNamePart != nullptr && !MR::isEqualSubString(accessor.getName(), pNamePart)) {
+                continue;
+            }
+
+            return iter.getFlag();
         }
 
         return nullptr;
+    }
+
+    const char* getEventFlagNameSpecialPowerStar(const char* pGalaxyName, s32 starId) {
+        const GameEventFlag* pFlag = findSpecialPowerStar(pGalaxyName, starId, nullptr);
+        return pFlag != nullptr ? GameEventFlagAccessor(pFlag).getName() : nullptr;
     }
 
     bool isPowerStarType(const char* pGalaxyName, s32 starId, const char* pStarType) {
@@ -511,11 +527,11 @@ namespace GameEventFlagTable {
                 return true;
             }
         } else if (pFlag1->mType == GameEventFlag::Type_Galaxy) {
-            const char* galaxyDependedFlags[3];
-            s32 length = getGalaxyDependedFlags(galaxyDependedFlags, ARRAY_SIZE(galaxyDependedFlags), pFlagName1);
+            MR::InlineVector< const char*, 3 > galaxyDependedFlags;
+            getGalaxyDependedFlags(&galaxyDependedFlags, pFlagName1);
 
-            for (s32 i = 0; i < length; i++) {
-                if (MR::isEqualString(galaxyDependedFlags[i], pFlagName2)) {
+            for (const char* const* pFlag = galaxyDependedFlags.begin(); pFlag != galaxyDependedFlags.end(); pFlag++) {
+                if (MR::isEqualString(*pFlag, pFlagName2)) {
                     return true;
                 }
             }
@@ -551,7 +567,7 @@ namespace GameEventFlagTable {
         for (const char* p = pName; *p != '\0'; p++) {
             if (static_cast< u8 >(*p) >= 0x80) {
                 for (const SavedName& rName : cJapanese) {
-                    if (strcmp(rName.mName, pName) == 0) {
+                    if (MR::isEqualString(rName.mName, pName)) {
                         return rName.mHash;
                     }
                 }
@@ -562,21 +578,7 @@ namespace GameEventFlagTable {
     }
 
     int getIndexFromHashCode(u16 hashCode) {
-        for (GameEventFlagIter iter = getBeginIter(); !iter.isEnd(); iter.goNext()) {
-            if ((iter.getFlag()->mSaveFlag & 0x1) != 0) {
-                continue;
-            }
-
-            GameEventFlagAccessor accessor = GameEventFlagAccessor(iter.getFlag());
-
-            if (getSaveHash(accessor.getName()) != hashCode) {
-                continue;
-            }
-
-            return getIndex(getFlag(iter.mIter));
-        }
-
-        return -1;
+        return SingletonHolder< GameEventFlagTableInstance >::get()->findSaveIndex(hashCode);
     }
 
     s32 calcSpecialPowerStarNum(const char* pPowerStarType) {
@@ -589,7 +591,7 @@ namespace GameEventFlagTable {
                 continue;
             }
 
-            if (strstr(accessor.getName(), pPowerStarType) == nullptr) {
+            if (!MR::isEqualSubString(accessor.getName(), pPowerStarType)) {
                 continue;
             }
 
@@ -611,26 +613,24 @@ namespace GameEventFlagTable {
         return calcSpecialPowerStarNum("SpecialStarGreen");
     }
 
-    s32 getGalaxyDependedFlags(const char** pFlags, int a1, const char* pName) {
+    void getGalaxyDependedFlags(MR::InlineVector< const char*, 3 >* pFlags, const char* pName) {
         Table info;
         info.attach(NebulaDataTables::getGalaxyInfoTable());
 
         TableIter iter = info.findElement("name", pName, 0);
 
-        s32 numFlags = 0;
-        for (s32 idx = 0; idx < 3; idx++) {
-            char key[32];
-            nebula_snprintf(key, 32, "OpenCondition%1d", idx);
-            if (info.searchItemInfo(key) < 0) {
+        // OpenCondition0, 1, ... up to the first column the table lacks.
+        for (s32 idx = 0;; idx++) {
+            const MR::FormattedName key("OpenCondition%d", idx);
+            if (info.searchItemInfo(key.c_str()) < 0) {
                 break;
             }
 
             const char* openCondition = "";
-            iter.getValue(key, &openCondition);
+            iter.getValue(key.c_str(), &openCondition);
             if (!MR::isEqualString(openCondition, "")) {
-                pFlags[numFlags++] = openCondition;
+                pFlags->push_back(openCondition);
             }
         }
-        return numFlags;
     }
 };  // namespace GameEventFlagTable

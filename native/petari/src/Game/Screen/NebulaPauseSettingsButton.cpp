@@ -2,10 +2,12 @@
 
 #include "Game/Screen/ButtonPaneController.hpp"
 #include "Game/Screen/LayoutManager.hpp"
+#include "Game/Screen/NebulaUi.hpp"
 #include "Game/System/NebulaText.hpp"
 #include "Game/Util/LayoutUtil.hpp"
 #include "Game/Util/MessageUtil.hpp"
 #include "Game/Util/ObjUtil.hpp"
+#include "Game/Util/StringUtil.hpp"
 #include <cstring>
 #include <Game/Ui/Layout.hpp>
 #include <Game/Ui/Pane.hpp>
@@ -33,7 +35,7 @@ void NebulaPauseSettingsButton::init(const TableIter& rIter) {
     // The menu's lower button alone, moved down into the band.
     Ui::Pane* pRoot = pManager->mLayout->mpRootPane;
     for (Ui::Pane* pChild : pRoot->GetChildList()) {
-        pChild->SetVisible(strcmp(pChild->mName, "BackButton") == 0);
+        pChild->SetVisible(MR::isEqualString(pChild->mName, "BackButton"));
     }
     MR::hidePane(this, "NBackUp");
     Ui::Pane* pGroup = MR::getPane(this, "BackButton");
@@ -42,12 +44,12 @@ void NebulaPauseSettingsButton::init(const TableIter& rIter) {
         pGroup->mScale = Vec2f(cScale, cScale);
         pGroup->mTranslate.y = cBandMiddle - pLower->mTranslate.y * cScale;
     }
-    char16_t label[64];
-    NebulaText::get(label, 64, "SettingsTitle");
-    MR::setTextBoxMessageRecursive(this, "NBackDown", label);
+    MR::Text16 label;
+    NebulaUi::getText(label, "SettingsTitle");
+    MR::setTextBoxMessageRecursive(this, "NBackDown", label.c_str());
 
     mButton = new ButtonPaneController(this, "NBackDown", "BoxButton2", 0, true);
-    mButton->_22 = false;
+    mButton->mDisappearsAfterDecide = false;
     // PauseMenu::draw draws it with the menu's own layout: under the windows that open over the menu (its questions,
     // the save's) and under Luigi's letter, as the menu's own buttons are.
     MR::connectToSceneLayoutOnPauseMovementCalcAnim(this);

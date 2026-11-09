@@ -22,7 +22,6 @@
 #include "Game/Particle/EmitterCore.hpp"
 #include "Game/Particle/ParticleMath.hpp"
 #include <cstdio>
-#include <cstring>
 #include "Game/Util/StringUtil.hpp"
 
 // A table's flags, written 0xAABBCCDD: AA first. By value, on any machine.
@@ -64,7 +63,6 @@ struct SmokeEffectEntry {
     u32 mHash;
     MultiEmitter* mEmitter;
     u8 mMaterial;
-    u8 _21[3];
 };
 
 MaterialEffectEntry cMaterialEffectTable[] = {
@@ -272,14 +270,14 @@ s32 MarioActor::getFloorMaterialIndex(u32 flags) const {
         break;
     case 0x20:
         materialIndex = 5;
-        if (strcmp(MR::getSoundCodeString(mMario->mShadowPolygon), "Honey") == 0) {
+        if (MR::getSoundCodeIndex(mMario->mShadowPolygon) == CollisionSoundCode_Honey) {
             materialIndex = 6;
         }
 
         break;
     case 0x1B:
     case 0x1C:
-        if (strcmp(MR::getSoundCodeString(mMario->mShadowPolygon), "Sand") == 0) {
+        if (MR::getSoundCodeIndex(mMario->mShadowPolygon) == CollisionSoundCode_Sand) {
             materialIndex = 3;
         }
 
@@ -366,27 +364,27 @@ void MarioActor::stopMaterialEffect(const char* pName) {
     }
 }
 
-SmokeEffectEntry cSmokeTable[] = {{"共通着地普通", 0x08000000, 1.0f, 1.0f, 0x00000400, 0, 0, 0, nullptr, 0, {0, 0, 0}},
-                                  {"共通着地大", 0x03000000, 1.5f, 1.0f, 0x00000400, 0, 0, 0, nullptr, 0, {0, 0, 0}},
-                                  {"共通壁ジャンプ", 0x03000000, 1.0f, 1.0f, 0x00000300, 0, 0, 0, nullptr, 0, {0, 0, 0}},
-                                  {"共通砂煙レベル", 0x07000000, 0.65f, 1.0f, 0x00000000, 0, 0, 0, nullptr, 0, {0, 0, 0}},
-                                  {"共通壁手擦り", 0x01000000, 0.35f, 1.0f, 0x02010000, 0, 0, 0, nullptr, 0, {0, 0, 0}},
-                                  {"共通壁上昇", 0x01000000, 1.0f, 1.0f, 0x00000200, 0, 0, 0, nullptr, 0, {0, 0, 0}},
-                                  {"共通スリップ坂", 0x02000000, 0.35f, 1.0f, 0x00010000, 2, 0, 0, nullptr, 0, {0, 0, 0}},
-                                  {"共通スリップ空転", 0x00000000, 1.0f, 1.0f, 0x00000000, 0, 0, 0, nullptr, 0, {0, 0, 0}},
-                                  {"共通スリップ坂制動", 0x02000000, 0.5f, 1.0f, 0x00000000, 2, 0, 0, nullptr, 0, {0, 0, 0}},
-                                  {"共通壁ヒット着地", 0x03000000, 1.0f, 1.0f, 0x00000400, 0, 0, 0, nullptr, 0, {0, 0, 0}},
-                                  {"共通ダメージ着地", 0x03000000, 1.0f, 1.0f, 0x00000400, 0, 0, 0, nullptr, 0, {0, 0, 0}},
-                                  {"共通地上スピン", 0x03000000, 0.9f, 1.0f, 0x00000400, 0, 0, 0, nullptr, 0, {0, 0, 0}},
-                                  {"共通ブレーキ", 0x02000000, 0.65f, 1.0f, 0x00010000, 15, 0, 0, nullptr, 0, {0, 0, 0}},
-                                  {"共通ハイジャンプ", 0x02000000, 0.65f, 1.0f, 0x00010000, 6, 0, 0, nullptr, 0, {0, 0, 0}},
-                                  {"共通ブラックホール", 0x01000000, 0.65f, 1.0f, 0x03030000, 0, 0, 0, nullptr, 0, {0, 0, 0}},
-                                  {"共通引き戻し着地", 0x03000000, 1.2f, 1.0f, 0x00000400, 0, 0, 0, nullptr, 0, {0, 0, 0}},
-                                  {"共通水底接触", 0x01000000, 6.0f, 0.5f, 0x00000400, 0, 0, 0, nullptr, 0, {0, 0, 0}},
-                                  {"共通跳躍", 0x08000000, 1.0f, 1.0f, 0x00000C00, 0, 0, 0, nullptr, 0, {0, 0, 0}},
-                                  {"共通ひこうき雲", 0x03000000, 0.3f, 0.2f, 0x00010000, 0, 0, 0, nullptr, 0, {0, 0, 0}},
-                                  {"共通ひこうきブースト", 0x00000000, 2.0f, 1.0f, 0x00000000, 0, 0, 0, nullptr, 0, {0, 0, 0}},
-                                  {nullptr, 0, 0.0f, 0.0f, 0, 0, 0, 0, nullptr, 0, {0, 0, 0}}};
+SmokeEffectEntry cSmokeTable[] = {{"共通着地普通", 0x08000000, 1.0f, 1.0f, 0x00000400, 0, 0, 0, nullptr, 0},
+                                  {"共通着地大", 0x03000000, 1.5f, 1.0f, 0x00000400, 0, 0, 0, nullptr, 0},
+                                  {"共通壁ジャンプ", 0x03000000, 1.0f, 1.0f, 0x00000300, 0, 0, 0, nullptr, 0},
+                                  {"共通砂煙レベル", 0x07000000, 0.65f, 1.0f, 0x00000000, 0, 0, 0, nullptr, 0},
+                                  {"共通壁手擦り", 0x01000000, 0.35f, 1.0f, 0x02010000, 0, 0, 0, nullptr, 0},
+                                  {"共通壁上昇", 0x01000000, 1.0f, 1.0f, 0x00000200, 0, 0, 0, nullptr, 0},
+                                  {"共通スリップ坂", 0x02000000, 0.35f, 1.0f, 0x00010000, 2, 0, 0, nullptr, 0},
+                                  {"共通スリップ空転", 0x00000000, 1.0f, 1.0f, 0x00000000, 0, 0, 0, nullptr, 0},
+                                  {"共通スリップ坂制動", 0x02000000, 0.5f, 1.0f, 0x00000000, 2, 0, 0, nullptr, 0},
+                                  {"共通壁ヒット着地", 0x03000000, 1.0f, 1.0f, 0x00000400, 0, 0, 0, nullptr, 0},
+                                  {"共通ダメージ着地", 0x03000000, 1.0f, 1.0f, 0x00000400, 0, 0, 0, nullptr, 0},
+                                  {"共通地上スピン", 0x03000000, 0.9f, 1.0f, 0x00000400, 0, 0, 0, nullptr, 0},
+                                  {"共通ブレーキ", 0x02000000, 0.65f, 1.0f, 0x00010000, 15, 0, 0, nullptr, 0},
+                                  {"共通ハイジャンプ", 0x02000000, 0.65f, 1.0f, 0x00010000, 6, 0, 0, nullptr, 0},
+                                  {"共通ブラックホール", 0x01000000, 0.65f, 1.0f, 0x03030000, 0, 0, 0, nullptr, 0},
+                                  {"共通引き戻し着地", 0x03000000, 1.2f, 1.0f, 0x00000400, 0, 0, 0, nullptr, 0},
+                                  {"共通水底接触", 0x01000000, 6.0f, 0.5f, 0x00000400, 0, 0, 0, nullptr, 0},
+                                  {"共通跳躍", 0x08000000, 1.0f, 1.0f, 0x00000C00, 0, 0, 0, nullptr, 0},
+                                  {"共通ひこうき雲", 0x03000000, 0.3f, 0.2f, 0x00010000, 0, 0, 0, nullptr, 0},
+                                  {"共通ひこうきブースト", 0x00000000, 2.0f, 1.0f, 0x00000000, 0, 0, 0, nullptr, 0},
+                                  {nullptr, 0, 0.0f, 0.0f, 0, 0, 0, 0, nullptr, 0}};
 
 void MarioActor::initCommonEffect() {
     mCommonEffectCount = 0;
@@ -907,11 +905,11 @@ void MarioActor::emitEffectWaterColumn(const Vec3f& rDir, const Vec3f& rTrans) {
 
 // A common effect's name starts with 共, a material effect's with 属 (3 bytes each in UTF-8).
 bool MarioActor::isCommonEffect(const char* pName) const {
-    return strncmp(pName, "共", 3) == 0;
+    return MR::isHeadString(pName, "共");
 }
 
 bool MarioActor::isMaterialEffect(const char* pName) const {
-    return strncmp(pName, "属", 3) == 0;
+    return MR::isHeadString(pName, "属");
 }
 
 MultiEmitter* MarioActor::playEffect(const char* pName) {
@@ -1220,9 +1218,9 @@ void MarioEffect::doCubeEffect() {
 
     AreaObj* area = MR::getAreaObj("EffectCylinder", mActor->mPosition);
     if (area != nullptr) {
-        s32 arg0 = MR::getAreaObjArg(area, 0);
+        s32 cubeArg = MR::getAreaObjArg(area, 0);
         mCubeArg1 = MR::getAreaObjArg(area, 1);
-        mCubeArg0 = arg0;
+        mCubeArg0 = cubeArg;
     } else {
     }
 
@@ -1281,7 +1279,7 @@ void MarioActor::stopSpinTicoEffect(bool force) {
 MarioEffect::~MarioEffect() {
 }
 
-void MultiEmitter::setGlobalScale(f32 scale, s32 a2) {
+void MultiEmitter::setGlobalScale(f32 scale, s32 idx) {
     Vec3f scaleVec(scale, scale, scale);
-    setGlobalScale(scaleVec, a2);
+    setGlobalScale(scaleVec, idx);
 }

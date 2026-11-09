@@ -9,6 +9,15 @@
 
 namespace {
     static const f32 sDisappearAnimRate = 0.25f;
+
+    // A text's code units with its terminator.
+    u32 unitsWithEnd(const char16_t* pText) {
+        u32 units = 1;
+        while (pText[units - 1] != 0) {
+            units++;
+        }
+        return units;
+    }
 };  // namespace
 
 namespace {
@@ -101,8 +110,10 @@ void FileSelectInfo::setInfo(u16* pName, s32 number, s32 starNum, s32 starPieceN
     mIsViewNormalEnding = isViewNormalEnding;
     mIsViewCompleteEnding = isViewCompleteEnding;
 
-    MR::copyString(mDateMessage, pDateMessage, ARRAY_SIZE(mDateMessage));
-    MR::copyString(mTimeMessage, pTimeMessage, ARRAY_SIZE(mTimeMessage));
+    const u32 dateUnits = unitsWithEnd(pDateMessage);
+    MR::copyString(mDateMessage.room(dateUnits), pDateMessage, dateUnits);
+    const u32 timeUnits = unitsWithEnd(pTimeMessage);
+    MR::copyString(mTimeMessage.room(timeUnits), pTimeMessage, timeUnits);
 
     mMissNum = missNum;
 }
@@ -176,8 +187,8 @@ void FileSelectInfo::reflectInfo() {
     MR::setTextBoxMessageRecursive(this, "FileName", mName);
     MR::setTextBoxNumberRecursive(this, "Star", mStarNum);
     MR::setTextBoxNumberRecursive(this, "StarPiece", mStarPieceNum);
-    MR::setTextBoxMessageRecursive(this, "TxtDay", mDateMessage);
-    MR::setTextBoxMessageRecursive(this, "TxtTime", mTimeMessage);
+    MR::setTextBoxMessageRecursive(this, "TxtDay", mDateMessage.c_str());
+    MR::setTextBoxMessageRecursive(this, "TxtTime", mTimeMessage.c_str());
 
     if (mMissNum >= 0) {
         MR::setTextBoxNumberRecursive(this, "MissCounter", mMissNum);

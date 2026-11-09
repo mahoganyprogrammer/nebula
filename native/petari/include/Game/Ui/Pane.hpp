@@ -147,8 +147,8 @@ namespace Ui {
         u8 mBasePosition;
         u8 mFlag;
         UiPaneKind mKind;  // what the pane is (PaneCast); from its record, or the class that made it in code
-        char mName[17];
-        char mUserData[9];
+        NameText< 17 > mName;
+        char mUserData[9];  // the layout file's 8-byte user data field
         mutable u32 mDrawSlot = 0;
         // Its place in its layout's tree order (Layout::GetOrder, which refreshes it); cNoListIndex outside it.
         static constexpr u32 cNoListIndex = 0xFFFFFFFFu;
@@ -169,7 +169,6 @@ namespace Ui {
         f32 mBuiltScreenScale = 1.0f;
         bool mLocalBuilt = false;
         static constexpr u32 cNoVersion = 0xFFFFFFFFu;
-        u8 mPadding;
     };
     // The pane as a T (Picture, TextBox, Window, Bounding) when it is one, else null; null stays null.
     template < class T >

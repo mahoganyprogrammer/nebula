@@ -20,6 +20,7 @@ struct MaterialConstants {
     float4 lights;     // x the colour channel's light mask, y its diffuse function, z its attenuation form
 };
 
+#define NATIVE_COORDS 1
 #include "native_material.hlsli"
 
 void material_vertex(NativeVertex v, inout NativeVaryings o) {
@@ -50,7 +51,7 @@ void material_vertex(NativeVertex v, inout NativeVaryings o) {
 
 float4 material_color(NativeVaryings i) {
     const uint form = uint(material.params.x);
-    const float4 t = tex[0].Sample(samp[0], i.uv[0].xy);
+    const float4 t = TEX(0).Sample(SAMP(0), i.uv[0].xy);
     const float3 k = material.kcolor.rgb;
     float3 c;
     float a;

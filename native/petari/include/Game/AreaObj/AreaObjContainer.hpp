@@ -2,6 +2,7 @@
 
 #include "Game/NameObj/NameObj.hpp"
 #include "Game/Util/Array.hpp"
+#include "Game/Util/NameIndex.hpp"
 #include <nebula_geometry.hpp>
 
 class AreaObj;
@@ -11,7 +12,7 @@ typedef AreaObjMgr* (*ManagerCreatorFuncPtr)(s32, const char*);
 
 struct Name2CreateManagerFunc {
     const char* mName;
-    s32 mMaxCount;
+    s32 mFirstCapacity;  // the manager grows past it
     ManagerCreatorFuncPtr mCreateFunc;
 };
 
@@ -28,6 +29,8 @@ public:
 
 private:
     MR::Vector< MR::AssignableArray< AreaObjMgr* > > mManagers;
+    MR::NameIndex mIndex;  // manager name -> index in mManagers
+    bool mHashesShared;    // two manager names share a hash: lookups scan
 };
 
 namespace MR {

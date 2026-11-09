@@ -29,7 +29,7 @@ public:
     void read(s32 chan);
     void requestReset();
     u32 takeSpinPresses(s32 hand);
-    PlayerInputSample* getSample(u32);
+    PlayerInputSample* getSample();
 
     NebulaInputDevice mDevice;
 
@@ -64,7 +64,6 @@ namespace MR {
     void resetPlayerInput();
     void setPlayerInputsModeHome();
     void setPlayerInputsModeGame();
-    void setInputSleepTime(bool);
     // How strongly the controller rumbles, 0 to 255.
     void setInputRumble(s32, u8);
 };  // namespace MR

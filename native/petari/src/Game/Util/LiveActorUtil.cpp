@@ -599,13 +599,6 @@ namespace MR {
         return true;
     }
 
-    bool isValidCalcViewAndEntry(const LiveActor* pActor) {
-        if (pActor->mFlag.mIsDead || pActor->mFlag.mIsClipped) {
-            return false;
-        }
-
-        return true;
-    }
 
     bool isValidDraw(const LiveActor* pActor) {
         if (pActor->mFlag.mIsDead || pActor->mFlag.mIsClipped || pActor->mFlag.mIsHiddenModel) {
@@ -1626,7 +1619,7 @@ namespace MR {
         for (u32 texIndex = 0; texIndex < pModelData->getTextureCount(); texIndex++) {
             const char* name = pModelData->getTextureName(texIndex);
 
-            if (strcmp(name, pTexName) != 0) {
+            if (!MR::isEqualString(name, pTexName)) {
                 continue;
             }
 

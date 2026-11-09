@@ -5,14 +5,13 @@
 class CameraInwardTower : public Camera {
 public:
     CameraInwardTower(const char* pName = "塔内部カメラ");
-    virtual ~CameraInwardTower();
 
     virtual void reset();
     virtual CameraTargetObj* calc();
     virtual bool isEnableToReset() const {
         return true;
     }
-    virtual CamTranslatorBase* createTranslator();
+    virtual void setParamFromChunk(const CameraParamChunk*);
 
     void calcIdealPose();
 

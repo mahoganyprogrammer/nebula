@@ -15,8 +15,7 @@
 #include "Game/Util/ScreenUtil.hpp"
 #include "Game/Util/StringUtil.hpp"
 #include "Game/Util/SystemUtil.hpp"
-#include <JSystem/JUtility/JUTNativeLog.hpp>
-#include <JSystem/JUtility/JUTTexture.hpp>
+#include "Game/Render/GameTexture.hpp"
 #include <cstdio>
 #include <cstring>
 #include <Game/Ui/Group.hpp>
@@ -67,6 +66,19 @@ namespace {
 
 namespace {
     namespace Local {
+        // Whether the first four characters of two names match (a name shorter than four ends the compare).
+        inline bool isSameFirstFour(const char* pA, const char* pB) {
+            for (u32 i = 0; i < 4; i++) {
+                if (pA[i] != pB[i]) {
+                    return false;
+                }
+                if (pA[i] == '\0') {
+                    return true;
+                }
+            }
+            return true;
+        }
+
         inline void collectLanguagePanes(Ui::Pane* pPane, BitFlagBase& rLanguagePanes, BitFlagBase& rCurrentLanguagePanes) {
             Ui::PaneList& rPaneList = pPane->mChildList;
             s32 index = -1;
@@ -80,9 +92,9 @@ namespace {
 
                 const char* pSuffix = pName + (length - 4);
                 for (u32 i = 0; i < MR::getLanguageNum(); i++) {
-                    if (strncmp(pSuffix, MR::getLanguagePrefixByIndex(i), 4) == 0) {
+                    if (isSameFirstFour(pSuffix, MR::getLanguagePrefixByIndex(i))) {
                         rLanguagePanes.onBit(index);
-                        if (strncmp(pSuffix, MR::getCurrentLanguagePrefix(), 4) == 0) {
+                        if (isSameFirstFour(pSuffix, MR::getCurrentLanguagePrefix())) {
                             rCurrentLanguagePanes.onBit(index);
                         }
 
@@ -129,9 +141,8 @@ namespace {
 LayoutManager::LayoutManager(const char* pLayoutName, bool useArchiveNamePrefix, u32 rootPaneAnimLayerNum, u32 textBoxBufferLength)
     : mLayoutHolder(), mLayout(), mAnimTransList(), mDrawInfo(), mIsScreenHidden(), mParentAnimValid(true), mIndDummyTexMap(), mGroupCtrlCount(),
       mGroupCtrlList(), mLayoutName() {
-    mAnchorCount = -1;
-    // pLayoutName points into fileNameWithoutExtension below, so it lives as long as the constructor (the original declared
-    // it in the if block: a dangling pointer once the block ends).
+    // pLayoutName points into fileNameWithoutExtension below, so it lives as long as the constructor
+    // (declared outside the if block so it outlives it).
     MR::FormattedName fileNameWithoutExtension;
     if (useArchiveNamePrefix) {
         MR::FormattedName fileNameFromPrefix;
@@ -207,7 +218,7 @@ void LayoutManager::draw() const {
         return;
     }
 
-    MR::setupDrawForNW4RLayout(1.0f, true);
+    MR::setupDrawForLayout();
     mLayout->Draw(mDrawInfo);
 }
 
@@ -358,7 +369,7 @@ s32 LayoutManager::getIndexOfGroupCtrl(const char* pName) const {
     u32 index = 0;
     Ui::GroupList& rGroupList = mLayout->mpGroupContainer->mGroupList;
     for (Ui::Group* pGroup : rGroupList) {
-        if (strcmp(pGroup->mName, pName) == 0) {
+        if (MR::isEqualString(pGroup->mName, pName)) {
             return index;
         }
 
@@ -463,7 +474,7 @@ void LayoutManager::copyPaneMtxRefs() {
 
 Ui::Group* LayoutManager::getGroup(const char* pName) const {
     for (Ui::Group* pGroup : mLayout->mpGroupContainer->mGroupList) {
-        if (strcmp(pGroup->mName, pName) == 0) {
+        if (MR::isEqualString(pGroup->mName, pName)) {
             return pGroup;
         }
     }
@@ -560,7 +571,7 @@ Ui::Pane* LayoutManager::getPane(const char* pName) const {
 
 Ui::Pane* LayoutManager::findPaneByName(const char* pName) const {
     Ui::Pane* const pPane = mLayout->FindPane(pName);
-    return pPane != nullptr && strcmp(pPane->mName, pName) == 0 ? pPane : nullptr;
+    return pPane != nullptr && MR::isEqualString(pPane->mName, pName) ? pPane : nullptr;
 }
 
 void LayoutManager::replaceIndDummyTexture() {
@@ -568,9 +579,9 @@ void LayoutManager::replaceIndDummyTexture() {
         return;
     }
 
-    JUTTexture screenTex(MR::getScreenResTIMG());
+    GameTexture screenTex(MR::getScreenResTIMG());
 
-    mIndDummyTexMap = new Ui::TexMap(screenTex.getTexObj());
+    mIndDummyTexMap = new Ui::TexMap(screenTex.site());
 
     void* pIndDummyResStart = mLayoutHolder->getResOther("IndDummy.tpl");
     void* pIndDummyResEnd = reinterpret_cast< void* >(-1);
@@ -594,7 +605,7 @@ void LayoutManager::replaceIndDummyTexture() {
 
         Ui::Material* pMaterial = pPicPane->GetMaterial();
 
-        for (u8 texMapIdx = 0; texMapIdx < pMaterial->GetTextureNum(); texMapIdx++) {
+        for (u32 texMapIdx = 0; texMapIdx < pMaterial->GetTextureNum(); texMapIdx++) {
             void* pImage = pMaterial->GetTexture(texMapIdx).mImage;
 
             if (pImage < pIndDummyResStart) {

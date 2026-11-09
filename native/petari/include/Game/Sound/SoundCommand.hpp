@@ -14,10 +14,7 @@ struct SoundCommand {
     u32 mValue;
     // The player or stream it is for.
     void* mTarget;
-    union {
-        u8 mBytes[cPayloadBytes];
-        void* mAlign;
-    };
+    alignas(void*) u8 mBytes[cPayloadBytes];
 
     template < class T >
     T& payload() {
@@ -38,11 +35,20 @@ class SoundRing {
 public:
     static const u32 cChunkCommands = 255;
 
-    void setup(NebulaArena* pHeap);
+    void setup(NebulaArena* pArena);
 
-    // Game thread: a record to fill, then send() makes it the reader's.
+    // Game thread: a record to fill, then send() makes it the reader's and returns sent().
     SoundCommand& next();
-    void send();
+    // The record with its kind and target set, mArg and mValue 0 (the payload is left as it was).
+    SoundCommand& next(u16 kind, void* pTarget) {
+        SoundCommand& rCommand = next();
+        rCommand.mKind = kind;
+        rCommand.mArg = 0;
+        rCommand.mValue = 0;
+        rCommand.mTarget = pTarget;
+        return rCommand;
+    }
+    u64 send();
     // Commands sent.
     u64 sent() const {
         return mWritten;
@@ -59,14 +65,14 @@ public:
 private:
     struct Chunk {
         NebulaAtomic< Chunk* > mNext;
-        u8 _pad[60];
-        SoundCommand mCommands[cChunkCommands];
+        alignas(64) SoundCommand mCommands[cChunkCommands];
     };
+    static_assert(sizeof(Chunk) == 64 * (cChunkCommands + 1), "the link on its own line, each command on one line");
 
     Chunk* newChunk();
     void freeLeft();
 
-    NebulaArena* mHeap = nullptr;
+    NebulaArena* mArena = nullptr;
     // Writer.
     Chunk* mTail = nullptr;
     u32 mTailIndex = 0;

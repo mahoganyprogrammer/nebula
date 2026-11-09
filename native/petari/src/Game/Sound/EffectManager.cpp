@@ -1,11 +1,13 @@
 #include "Game/Sound/EffectManager.hpp"
 #include "Game/Sound/SoundHandles.hpp"
-#include "Game/Sound/SoundInfo.hpp"
+#include "Game/Sound/SoundMemory.hpp"
+#include "Game/Sound/StdSoundInfo.hpp"
+#include "Game/System/NebulaArena.hpp"
 
 void EffectCategory::managerCalc_() {
     mParams.calc();
 
-    for (JSULink< EffectSound >* i = mSeList.getFirst(); i != mSeList.getEnd(); i = i->getNext()) {
+    for (NebulaListLink< EffectSound >* i = mSeList.getFirst(); i != mSeList.getEnd(); i = i->getNext()) {
         i->getObject()->categoryCalc_();
     }
 
@@ -13,9 +15,9 @@ void EffectCategory::managerCalc_() {
 }
 
 void EffectCategory::freeDeadSe_() {
-    JSULink< EffectSound >* i = mSeList.getFirst();
+    NebulaListLink< EffectSound >* i = mSeList.getFirst();
     while (i != mSeList.getEnd()) {
-        JSULink< EffectSound >* link_next = i->getNext();
+        NebulaListLink< EffectSound >* link_next = i->getNext();
         if (i->getObject()->isDead()) {
             mSeList.remove(i);
             delete i->getObject();
@@ -31,7 +33,7 @@ bool EffectCategory::acceptsNewSe_(u32 priority) const {
     }
 
     int playingNum = 0;
-    for (JSULink< EffectSound >* i = mSeList.getFirst(); i != mSeList.getEnd(); i = i->getNext()) {
+    for (NebulaListLink< EffectSound >* i = mSeList.getFirst(); i != mSeList.getEnd(); i = i->getNext()) {
         if (priority < i->getObject()->getProperPriority_()) {
             return true;
         }
@@ -45,15 +47,15 @@ bool EffectCategory::acceptsNewSe_(u32 priority) const {
 
 // Stable, ascending by category priority. Linear when the order hasn't changed since the last frame.
 void EffectCategory::sortByPriority_() {
-    JSULink< EffectSound >* pLink = mSeList.getFirst();
+    NebulaListLink< EffectSound >* pLink = mSeList.getFirst();
     if (pLink == mSeList.getEnd()) {
         return;
     }
 
     for (pLink = pLink->getNext(); pLink != mSeList.getEnd();) {
-        JSULink< EffectSound >* const pNext = pLink->getNext();
+        NebulaListLink< EffectSound >* const pNext = pLink->getNext();
         const u32 priority = pLink->getObject()->getPriority_();
-        JSULink< EffectSound >* pPos = pLink->getPrev();
+        NebulaListLink< EffectSound >* pPos = pLink->getPrev();
 
         if (priority < pPos->getObject()->getPriority_()) {
             do {
@@ -68,20 +70,20 @@ void EffectCategory::sortByPriority_() {
 }
 
 void EffectCategory::stop(u32 fadeTime) {
-    for (JSULink< EffectSound >* i = mSeList.getFirst(); i != mSeList.getEnd(); i = i->getNext()) {
+    for (NebulaListLink< EffectSound >* i = mSeList.getFirst(); i != mSeList.getEnd(); i = i->getNext()) {
         i->getObject()->stop(fadeTime);
     }
 }
 
 void EffectCategory::stop() {
-    for (JSULink< EffectSound >* i = mSeList.getFirst(); i != mSeList.getEnd(); i = i->getNext()) {
+    for (NebulaListLink< EffectSound >* i = mSeList.getFirst(); i != mSeList.getEnd(); i = i->getNext()) {
         i->getObject()->stop();
     }
 }
 
 void EffectCategory::stopSoundID(SoundID id) {
     if (!id.isAnonymous()) {
-        for (JSULink< EffectSound >* i = mSeList.getFirst(); i != mSeList.getEnd(); i = i->getNext()) {
+        for (NebulaListLink< EffectSound >* i = mSeList.getFirst(); i != mSeList.getEnd(); i = i->getNext()) {
             if ((u32)i->getObject()->getID() == (u32)id) {
                 i->getObject()->stop();
             }
@@ -92,7 +94,7 @@ void EffectCategory::stopSoundID(SoundID id) {
 void EffectCategory::managerMixOut_(const SoundMove& params, SoundActivity activity) {
     SoundParams mixParams;
     mixParams.combine(params.mParams, mParams.mParams);
-    JSULink< EffectSound >* i = mSeList.getFirst();
+    NebulaListLink< EffectSound >* i = mSeList.getFirst();
 
     // The leading sounds that aren't far away play, up to the active limit (0: no limit); the rest are muted.
     const bool isLimited = getMaxActiveSe() > 0;
@@ -110,7 +112,7 @@ void EffectCategory::managerMixOut_(const SoundMove& params, SoundActivity activ
 EffectManager::EffectManager(bool setInstance) : SoundGlobal< EffectManager >(setInstance) {
     mAudience = nullptr;
     mSeqDataMgr = nullptr;
-    mStrategyMgr = nullptr;
+    mSeCalc = nullptr;
     mParams.init();
     mSoundActivity.init();
 }
@@ -150,8 +152,8 @@ void EffectManager::setAudience(SoundAudience* audience) {
     mAudience = audience;
 }
 
-void EffectManager::setStrategyMgr(SoundStrategyMgr< EffectSound >* soundStrategyMgr) {
-    mStrategyMgr = soundStrategyMgr;
+void EffectManager::setSeCalc(void (*pCalc)(EffectSound*)) {
+    mSeCalc = pCalc;
 }
 
 void EffectManager::setSeqDataMgr(SeqSource* seqDataMgr) {
@@ -168,7 +170,7 @@ EffectSound* EffectManager::newSe_(int category, u32 priority) {
         return nullptr;
     }
 
-    EffectSound* se = new EffectSound(this, mStrategyMgr, priority);
+    EffectSound* se = new (SoundMemory::arena(), 0) EffectSound(this, priority);
     if (se == nullptr) {
         return nullptr;
     }
@@ -206,18 +208,8 @@ bool EffectManager::startSound(SoundID id, SoundHandle* handle, const Vec3f* pos
         (*handle)->stop();
     }
 
-    SoundInfo* soundInfoPtr = SoundGlobal< SoundInfo >::getInstance();
-    u32 priority;
-    u32 category;
-    if (soundInfoPtr != nullptr) {
-        category = soundInfoPtr->getCategory(id);
-        priority = soundInfoPtr->getPriority(id);
-    } else {
-        category = id.getGroupID();
-        priority = 0;
-    }
-
-    EffectSound* se = newSe_(category, priority);
+    const StdSoundInfo* info = StdSoundInfo::getInstance();
+    EffectSound* se = newSe_(id.getGroupID(), info->getPriority(id));
     if (se == nullptr) {
         return false;
     }
@@ -225,9 +217,7 @@ bool EffectManager::startSound(SoundID id, SoundHandle* handle, const Vec3f* pos
     SoundAudience* audiencePtr = mAudience;
     se->startID_(id, posPtr, audiencePtr);
 
-    if (soundInfoPtr != nullptr) {
-        soundInfoPtr->getSeInfo(id, se);
-    }
+    info->applySound(id, se);
 
     if (handle != nullptr) {
         se->attachHandle(handle);

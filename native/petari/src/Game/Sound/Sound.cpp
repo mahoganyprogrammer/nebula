@@ -1,5 +1,5 @@
 #include "Game/Sound/Sound.hpp"
-#include <JSystem/JUtility/JUTNativeLog.hpp>
+#include <nebula_module.h>
 #include "Game/Sound/SoundAudience.hpp"
 #include "Game/Sound/SoundHandles.hpp"
 #include "Game/Sound/PlayerLink.hpp"
@@ -70,8 +70,8 @@ void Sound::startSound_(SoundID id, const Vec3f* posPtr, SoundAudience* audience
     mPrepareCount = 0;
     mCount = 0;
 
-    if (posPtr != nullptr && mAudience != nullptr) {
-        mAudible = mAudience->newAudible(*posPtr, mSoundID, nullptr, 0);
+    if (posPtr != nullptr && mAudience != nullptr && mAudience->startAudible(&mAudibleData, *posPtr, mSoundID)) {
+        mAudible = &mAudibleData;
     } else {
         mAudible = nullptr;
     }
@@ -109,7 +109,6 @@ StreamSound* Sound::asStream() {
 
 void Sound::dieSound_() {
     if (mAudible != nullptr) {
-        mAudience->deleteAudible(mAudible);
         mAudible = nullptr;
         mAudience = nullptr;
     }
@@ -132,10 +131,10 @@ bool Sound::calcSound_() {
         // stopped every sound. It fades out as a stopped sound does, and names itself.
         if (mCount == 1800 && asSe() != nullptr) {
             if (mHandle == nullptr && !hasLifeTime() && !isStopping()) {
-                JUTNativeLog("audio: orphaned sound %08x stopped after 30 s\n", (u32)mSoundID);
+                nebula_log("audio: orphaned sound %08x stopped after 30 s\n", (u32)mSoundID);
                 stop(30);
             } else {
-                JUTNativeLog("audio: sound %08x alive 30 s (lifetime %s, handle %s)\n", (u32)mSoundID,
+                nebula_log("audio: sound %08x alive 30 s (lifetime %s, handle %s)\n", (u32)mSoundID,
                          hasLifeTime() ? "on" : "off", isHandleAttached() ? "held" : "none");
             }
         }
@@ -174,24 +173,14 @@ bool Sound::calcSound_() {
 }
 
 void Sound::initGroups_(PlayerLink* pLink) {
-    u32 count = 0;
-    for (int i = 0; i < mAudience->getMaxChannels(); i++) {
-        if (mAudible->getOuterParams(i) != nullptr) {
-            count++;
-        }
-    }
-    pLink->setMgrCount(count);
+    pLink->setMgrCount(static_cast< u32 >(mAudible->getChannelCount()));
     sendGroups_(pLink);
 }
 
 // The audible's channel values as the audience mixed them this frame, a group each in channel order.
 void Sound::sendGroups_(PlayerLink* pLink) {
-    u32 group = 0;
-    for (int i = 0; i < mAudience->getMaxChannels(); i++) {
-        const SoundParams* pParams = mAudible->getOuterParams(i);
-        if (pParams != nullptr) {
-            pLink->setMgrSound(group++, pParams);
-        }
+    for (s32 i = 0; i < mAudible->getChannelCount(); i++) {
+        pLink->setMgrSound(static_cast< u32 >(i), &mAudible->getOuterParams(i));
     }
 }
 

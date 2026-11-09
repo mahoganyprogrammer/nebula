@@ -1,7 +1,7 @@
 #include "Game/System/NebulaFrameClock.hpp"
 #include "Game/Scene/MultiSceneActor.hpp"
 #include "Game/Util/ScreenUtil.hpp"
-#include <cstring>
+#include "Game/Util/StringUtil.hpp"
 #include "Game/LiveActor/ModelManager.hpp"
 #include "Game/LiveActor/Spine.hpp"
 #include "Game/Scene/MultiSceneEffectKeeper.hpp"
@@ -13,7 +13,7 @@
 
 MultiSceneActor::MultiSceneActor(const char* pName, const char* pModelName, bool deferMaterials)
     : NameObj(pName), mTranslation(0.0f, 0.0f, 0.0f), mRotation(0.0f, 0.0f, 0.0f), mScale(1.0f, 1.0f, 1.0f), mIsDead(true), mModelManager(nullptr),
-      mEffectSystem(nullptr), mEffectKeeper(nullptr), mSpine(nullptr) {
+      mEffectSystem(nullptr), mEffectKeeper(nullptr), mSpine(nullptr), mIsScenarioSelectSky(MR::isEqualString(pName, "シナリオ選択の空")) {
     mModelManager = new ModelManager();
     mModelManager->init(pModelName, nullptr, deferMaterials);
 }
@@ -44,20 +44,13 @@ void MultiSceneActor::calcAnim() {
         return;
     }
 
-    Mtx34f mtx;
-    mtx.identity();
-
-    MR::makeMtxTR(mtx, mTranslation, mRotation);
-    NebulaMtxCopy(mtx, mModelManager->getModel()->mBaseTransformMtx);
-
     Model* pModel = mModelManager->getModel();
-    pModel->mBaseScale.x = mScale.x;
-    pModel->mBaseScale.y = mScale.y;
-    pModel->mBaseScale.z = mScale.z;
+    MR::makeMtxTR(pModel->mBaseTransformMtx, mTranslation, mRotation);
+    pModel->setBaseScale(mScale);
     // The star-select sky (ScenarioSelectLayout) is one quad at z = -1000 sized for 16:9: a wider picture scales it
     // about its centre so it still covers the screen. The base matrix is rotation and translation only.
     if (MR::isScreen16Per9() && MR::getDisplay().wide &&
-        strcmp(mName, "シナリオ選択の空") == 0) {
+        mIsScenarioSelectSky) {
         const f32 k = MR::getDisplay().layout_width / NebulaFrameClock::cLayoutWidth;
         if (k > 1.0f) {
             const f32 offsetZ = pModel->mBaseScale.z * (1.0f - k) * -1000.0f;
@@ -111,7 +104,7 @@ MultiSceneEffectKeeper* MultiSceneActor::getEffectKeeper() const {
 void MultiSceneActor::initEffect(EffectSystem* pEffectSystem, int extraEmitterNum, const char* pResName) {
     mEffectSystem = pEffectSystem;
 
-    mEffectKeeper = new MultiSceneEffectKeeper(mName, mModelManager, extraEmitterNum, pResName);
+    mEffectKeeper = new MultiSceneEffectKeeper(mModelManager, extraEmitterNum, pResName);
     mEffectKeeper->init(this, pEffectSystem);
 }
 

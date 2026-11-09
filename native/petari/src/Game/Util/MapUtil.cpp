@@ -10,12 +10,14 @@
 #include "Game/Util/GravityUtil.hpp"
 #include "Game/Util/LiveActorUtil.hpp"
 #include "Game/Util/MathUtil.hpp"
+#include "Game/System/Arenas.hpp"
+#include "Game/System/NebulaArena.hpp"
 #include "Game/Util/ModelUtil.hpp"
 #include "Game/Util/MtxUtil.hpp"
 #include "Game/Util/TriangleFilter.hpp"
 
 namespace {
-    // getNearPolyOnLineSort's hits, nearest first, in the system heap; it grows to the most hits one line has had.
+    // getNearPolyOnLineSort's hits, nearest first, in the permanent arena; it grows to the most hits one line has had.
     HitInfo* sSortBuffer = nullptr;
     f32* sSortDistance = nullptr;
     u32 sSortRoom = 0;
@@ -140,40 +142,13 @@ namespace MR {
         return true;
     }
 
-    bool isWaterPolygon(const Triangle* pTriangle) {
-        const char* pFloorCodeString = getFloorCodeString(pTriangle);
-
-        if (pFloorCodeString != nullptr) {
-            if (strcmp(pFloorCodeString, "Water") == 0) {
-                return true;
-            }
-
-            if (strcmp(pFloorCodeString, "Shallow") == 0) {
-                return true;
-            }
-        }
-
+    // The floor codes name no Water or Shallow (Shallow is a sound code), so no polygon is water by its floor code.
+    bool isWaterPolygon(const Triangle*) {
         return false;
     }
 
     bool isThroughPolygon(const Triangle* pTriangle) {
-        const char* pFloorCodeString = getFloorCodeString(pTriangle);
-
-        if (pFloorCodeString != nullptr) {
-            if (strcmp(pFloorCodeString, "Water") == 0) {
-                return true;
-            }
-
-            if (strcmp(pFloorCodeString, "Shallow") == 0) {
-                return true;
-            }
-
-            if (strcmp(pFloorCodeString, "PullBack") == 0) {
-                return true;
-            }
-        }
-
-        return false;
+        return getFloorCodeIndex(pTriangle) == static_cast< s32 >(CollisionFloorCode_PullBack);
     }
 
     bool getFirstPolyOnLineToMap(Vec3f* pPos, Triangle* pTriangle, const Vec3f& rStart, const Vec3f& rDirection) {
@@ -263,8 +238,8 @@ namespace MR {
             delete[] sSortBuffer;
             delete[] sSortDistance;
             sSortRoom = count * 2;
-            sSortBuffer = new (NebulaArena::getSystemHeap(), 0) HitInfo[sSortRoom];
-            sSortDistance = new (NebulaArena::getSystemHeap(), 0) f32[sSortRoom];
+            sSortBuffer = new (Arenas::permanent(), 0) HitInfo[sSortRoom];
+            sSortDistance = new (Arenas::permanent(), 0) f32[sSortRoom];
         }
 
         // Insertion by distance: equal distances keep the order the keeper found them in.
@@ -598,18 +573,6 @@ namespace MR {
 
     u32 getCameraID(const Triangle* pTriangle) {
         return getCollisionDirector()->mCode->getCameraID(*pTriangle);
-    }
-
-    const char* getFloorCodeString(const Triangle* pTriangle) {
-        return getCollisionDirector()->mCode->getFloorCodeString(*pTriangle);
-    }
-
-    const char* getWallCodeString(const Triangle* pTriangle) {
-        return getCollisionDirector()->mCode->getWallCodeString(*pTriangle);
-    }
-
-    const char* getSoundCodeString(const Triangle* pTriangle) {
-        return getCollisionDirector()->mCode->getSoundCodeString(*pTriangle);
     }
 
     s32 getFloorCodeIndex(const TableIter& rIter) {

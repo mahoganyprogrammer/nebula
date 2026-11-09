@@ -74,19 +74,29 @@ namespace MR {
         rDst.format("%s/%s", pParent, pChild);
     }
 
-    void makeDateString(char16_t* pDst, s32 size, s32 year, s32 month, s32 day) {
-        const char16_t* pMessage = MR::getGameMessageDirect("System_Date000");
+    namespace {
+        // The message with its number tags replaced, whole: ReplaceArgs gives the whole length even when it cut the
+        // text, so a text past the room is made again in room for it.
+        template < class... Numbers >
+        const char16_t* replaceWhole(Text16& rDst, const char* pMessageId, Numbers... numbers) {
+            const char16_t* pMessage = MR::getGameMessageDirect(pMessageId);
+            const u32 units = ReplaceTagFunction::ReplaceArgs(rDst.data(), static_cast< s32 >(rDst.capacity()), pMessage, numbers...);
+            if (units >= rDst.capacity()) {
+                ReplaceTagFunction::ReplaceArgs(rDst.room(units + 1), static_cast< s32 >(units + 1), pMessage, numbers...);
+            }
+            return rDst.c_str();
+        }
+    }  // namespace
 
-        ReplaceTagFunction::ReplaceArgs(pDst, size, pMessage, year, month, day);
+    const char16_t* makeDateString(Text16& rDst, s32 year, s32 month, s32 day) {
+        return replaceWhole(rDst, "System_Date000", year, month, day);
     }
 
-    void makeTimeString(char16_t* pDst, s32 size, s32 hour, s32 minute) {
-        const char16_t* pMessage = MR::getGameMessageDirect("System_Time002");
-
-        ReplaceTagFunction::ReplaceArgs(pDst, size, pMessage, hour, minute);
+    const char16_t* makeTimeString(Text16& rDst, s32 hour, s32 minute) {
+        return replaceWhole(rDst, "System_Time002", hour, minute);
     }
 
-    void makeClearTimeString(char16_t* pDst, u32 frame) {
+    const char16_t* makeClearTimeString(Text16& rDst, u32 frame) {
         s32 minute;
         s32 second;
         s32 centisecond;
@@ -103,12 +113,10 @@ namespace MR {
             centisecond = ((signedFrame % ::cFramePerSec) * ::cCentisecPerSec) / ::cFramePerSec;
         }
 
-        const char16_t* pMessage = MR::getGameMessageDirect("System_Time000");
-
-        ReplaceTagFunction::ReplaceArgs(pDst, 9, pMessage, 0, minute, second, centisecond);
+        return replaceWhole(rDst, "System_Time000", 0, minute, second, centisecond);
     }
 
-    void makeMinuteAndSecondString(char16_t* pDst, u32 frame) {
+    const char16_t* makeMinuteAndSecondString(Text16& rDst, u32 frame) {
         s32 minute;
         s32 second;
 
@@ -120,9 +128,7 @@ namespace MR {
             second = (frame % static_cast< u32 >(::cFramePerMin)) / static_cast< u32 >(::cFramePerSec);
         }
 
-        const char16_t* pMessage = MR::getGameMessageDirect("System_Time001");
-
-        ReplaceTagFunction::ReplaceArgs(pDst, 16, pMessage, 0, minute, second);
+        return replaceWhole(rDst, "System_Time001", 0, minute, second);
     }
 
     char16_t* addNumberFontTag(char16_t* pDst, int tag) {
@@ -133,7 +139,7 @@ namespace MR {
         const char* const pExtSeparator = strrchr(pPath, '.');
         const char* const pDirSeparator = strrchr(pPath, '/');
 
-        // No dot at all: the console code wrote through a null separator here.
+        // No dot at all, or a dot before the last slash or right after it: the whole path is kept.
         if (pExtSeparator == nullptr || pExtSeparator < pDirSeparator || (pDirSeparator != nullptr && pDirSeparator + 1 == pExtSeparator)) {
             rDst.format("%s", pPath);
             return;
@@ -142,12 +148,12 @@ namespace MR {
         rDst.format("%.*s", static_cast< int >(pExtSeparator - pPath), pPath);
     }
 
-    void makeRaceBestTimeString(char16_t* pDst, int raceId) {
-        MR::makeClearTimeString(pDst, getRaceBestTime(raceId));
+    const char16_t* makeRaceBestTimeString(Text16& rDst, int raceId) {
+        return MR::makeClearTimeString(rDst, getRaceBestTime(raceId));
     }
 
-    void makeRaceCurrentTimeString(char16_t* pDst) {
-        MR::makeClearTimeString(pDst, getRaceCurrentTime());
+    const char16_t* makeRaceCurrentTimeString(Text16& rDst) {
+        return MR::makeClearTimeString(rDst, getRaceCurrentTime());
     }
 
     // num is the buffer size: the copy is cut to fit and always terminated.
@@ -222,14 +228,6 @@ namespace MR {
         return pBasename;
     }
 
-    // At most num bytes, and the terminator within size.
-    void extractString(char* pDst, const char* pSrc, u32 num, u32 size) {
-        const u32 count = num < size ? num : size - 1;
-        strncpy(pDst, pSrc, count);
-
-        pDst[count] = '\0';
-    }
-
     int convertUTF16ToASCII(char* pDst, const char16_t* pSrc, s32 num) {
         u32 i;
 
@@ -250,8 +248,29 @@ namespace MR {
         return ::nebula_stricmp(pStr1, pStr2);
     }
 
+    int compareString(const char* pStr1, const char* pStr2) {
+        return strcmp(pStr1, pStr2);
+    }
+
     bool isEqualString(const char* pStr1, const char* pStr2) {
-        return strcmp(pStr1, pStr2) == 0;
+        if (pStr1 == nullptr || pStr2 == nullptr) {
+            return pStr1 == pStr2;
+        }
+        for (; *pStr1 == *pStr2; pStr1++, pStr2++) {
+            if (*pStr1 == '\0') {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool isEqualStringPrefix(const char* pStr, const char* pPrefix) {
+        for (; *pPrefix != '\0'; pStr++, pPrefix++) {
+            if (*pStr != *pPrefix) {
+                return false;
+            }
+        }
+        return true;
     }
 
     bool isEqualStringCase(const char* pStr1, const char* pStr2) {
@@ -260,6 +279,15 @@ namespace MR {
 
     bool isEqualSubString(const char* pStr, const char* pSubStr) {
         return strstr(pStr, pSubStr) != nullptr;
+    }
+
+    bool isHeadString(const char* pStr, const char* pHead) {
+        for (; *pHead != '\0'; pStr++, pHead++) {
+            if (*pStr != *pHead) {
+                return false;
+            }
+        }
+        return true;
     }
 
     bool hasStringSpace(const char* pStr) {
@@ -411,12 +439,12 @@ namespace MR {
             hash = (hash ^ static_cast< u8 >(pName[length])) * 16777619u;
         }
         for (InternedName* p = sInterned; p != nullptr; p = p->mNext) {
-            if (p->mHash == hash && strcmp(p->mText, pName) == 0) {
+            if (p->mHash == hash && isEqualString(p->mText, pName)) {
                 return p->mText;
             }
         }
         InternedName* const pNew = static_cast< InternedName* >(
-            NebulaArena::alloc(static_cast< u32 >(offsetof(InternedName, mText)) + length + 1, 4, NebulaArena::getRootHeap()));
+            NebulaArena::alloc(static_cast< u32 >(offsetof(InternedName, mText)) + length + 1, 4, NebulaArena::root()));
         pNew->mNext = sInterned;
         pNew->mHash = hash;
         memcpy(pNew->mText, pName, length + 1);
@@ -463,6 +491,55 @@ namespace MR {
     }
 
     FormattedName::~FormattedName() {
+        if (mText != mInline) {
+            delete[] mText;
+        }
+    }
+
+    char16_t* Text16::room(u32 units) {
+        if (units > mRoom) {
+            if (mText != mInline) {
+                delete[] mText;
+            }
+            mText = new char16_t[units];
+            mRoom = units;
+        }
+        mText[0] = u'\0';
+        return mText;
+    }
+
+    char16_t* Text16::grow(u32 used, u32 units) {
+        if (units > mRoom) {
+            u32 room = mRoom * 2;
+            if (room < units) {
+                room = units;
+            }
+            char16_t* const pNew = new char16_t[room];
+            for (u32 i = 0; i < used && i < mRoom; i++) {
+                pNew[i] = mText[i];
+            }
+            if (mText != mInline) {
+                delete[] mText;
+            }
+            mText = pNew;
+            mRoom = room;
+        }
+        return mText;
+    }
+
+    const char16_t* Text16::format(const char16_t* pFormat, va_list args) {
+        for (u32 units = mRoom;; units *= 2) {
+            va_list copy;
+            va_copy(copy, args);
+            const int count = MR::formatTextV(room(units), units, pFormat, copy);
+            va_end(copy);
+            if (count >= 0) {
+                return mText;
+            }
+        }
+    }
+
+    Text16::~Text16() {
         if (mText != mInline) {
             delete[] mText;
         }

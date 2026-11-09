@@ -27,7 +27,7 @@ bool MarioActor::canTakePowerUp(s32 playerMode) const {
     }
 }
 
-void MarioActor::setPlayerMode(u16 playerMode, bool myBool) {
+void MarioActor::setPlayerMode(u16 playerMode, bool withMorph) {
     playerMode = static_cast< u16 >(NebulaMods::fire(NEBULA_MOD_EVENT_POWER_UP, playerMode));
 
     if (mPlayerMode == playerMode) {
@@ -185,7 +185,7 @@ void MarioActor::setPlayerMode(u16 playerMode, bool myBool) {
     case 0:
         MR::startBtp(this, "ElementEnd");
 
-        if (myBool) {
+        if (withMorph) {
             switch (mPrevPlayerMode) {
             case 4:
             case 5:
@@ -296,7 +296,7 @@ void MarioActor::setPlayerMode(u16 playerMode, bool myBool) {
             mTransforming = false;
         }
 
-        if (myBool) {
+        if (withMorph) {
             mMorphTimer = 30;
             mMario->startPadVib("マリオ[変身解除]");
         } else {
@@ -362,12 +362,12 @@ void MarioActor::updatePlayerMode() {
     setPlayerMode(0, true);
 }
 
-struct myStruct {
-    const char* _0[9];
-    u32 _24;
+struct MorphString {
+    const char* mNames[9];  // by player mode; [0] the normal one, [8] Luigi's
+    u32 mHash;  // of mNames[0]
 };
 
-static myStruct cMorphStringTable[] = {{{"DieBlackHole", 0, 0, 0, "DieBlackHoleBee", 0, 0, 0, "DieBlackHoleLuigi"}, 0}, {}};
+static MorphString cMorphStringTable[] = {{{"DieBlackHole", 0, 0, 0, "DieBlackHoleBee", 0, 0, 0, "DieBlackHoleLuigi"}, 0}, {}};
 
 void MarioActor::touchSensor(HitSensor* pSensor) {
     switch (pSensor->mType) {
@@ -385,30 +385,30 @@ void MarioActor::touchSensor(HitSensor* pSensor) {
 }
 
 void MarioActor::initMorphStringTable() {
-    for (myStruct* item = cMorphStringTable;; item++) {
-        if (item->_0[0] == nullptr) {
+    for (MorphString* item = cMorphStringTable;; item++) {
+        if (item->mNames[0] == nullptr) {
             break;
         }
 
-        item->_24 = MR::getHashCode(item->_0[0]);
+        item->mHash = MR::getHashCode(item->mNames[0]);
     }
 }
 
 const char* MarioActor::changeMorphString(const char* name) const {
     u32 hash = MR::getHashCode(name);
-    for (myStruct* item = cMorphStringTable;; item++) {
-        if (item->_0[0] == nullptr) {
+    for (MorphString* item = cMorphStringTable;; item++) {
+        if (item->mNames[0] == nullptr) {
             break;
         }
-        if (item->_24 == hash) {
-            const char* morph = item->_0[mPlayerMode];
+        if (item->mHash == hash) {
+            const char* morph = item->mNames[mPlayerMode];
             if (morph == nullptr || mPlayerMode == PlayerMode_Normal) {
                 if (gIsLuigi) {
-                    if (item->_0[8] != nullptr) {
-                        return item->_0[8];
+                    if (item->mNames[8] != nullptr) {
+                        return item->mNames[8];
                     }
                 }
-                return item->_0[0];
+                return item->mNames[0];
             }
             return morph;
         }

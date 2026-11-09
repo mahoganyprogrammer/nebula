@@ -5,11 +5,10 @@
 class CameraMtxRegParallel : public Camera {
 public:
     CameraMtxRegParallel(const char* pName = "マトリクスレジスタ並行カメラ");
-    virtual ~CameraMtxRegParallel();
 
     virtual void reset();
     virtual CameraTargetObj* calc();
-    virtual CamTranslatorBase* createTranslator();
+    virtual void setParamFromChunk(const CameraParamChunk*);
 
     void setParam(const char* str, f32 dist, const Vec2f& angle, const Vec3f& wPoint) {
         mString = str;

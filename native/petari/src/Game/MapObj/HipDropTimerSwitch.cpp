@@ -59,7 +59,7 @@ void HipDropTimerSwitch::init(const TableIter& rIter) {
     MR::getPlacementArg0NoInit(rIter, &mTimerMax);
     MR::getPlacementArg1NoInit(rIter, &mTimerSFXType);
 
-    if (mTimerSFXType <= 0) {
+    if (mTimerSFXType <= 0 || mTimerSFXType >= ARRAY_SIZE(::sTimerSeSet)) {
         mTimerSFXType = 0;
     }
 
@@ -229,7 +229,4 @@ void HipDropTimerSwitch::exeSwitchUp() {
     if (MR::isBckStopped(this)) {
         setNerve(GET_NERVE(HipDropSwitch, HipDropTimerSwitchNrvOff));
     }
-}
-
-HipDropTimerSwitch::~HipDropTimerSwitch() {
 }

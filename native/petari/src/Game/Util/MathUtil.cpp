@@ -667,10 +667,10 @@ namespace MR {
     }
 
     void normalize(Vec2f* pVec) {
-        Vec3f vec3(pVec->x, pVec->y, 0.0f);
-        normalize(&vec3);
-        pVec->x = vec3.x;
-        pVec->y = vec3.y;
+        Vec3f vec(pVec->x, pVec->y, 0.0f);
+        normalize(&vec);
+        pVec->x = vec.x;
+        pVec->y = vec.y;
     }
 
     void normalize(Vec3f* pVec) {
@@ -1064,7 +1064,7 @@ f32 VecKillElement(const Vec* pSrc, const Vec* pKill, const Vec* pDst) {
     const f32 sx = pSrc->x, sy = pSrc->y, sz = pSrc->z;
     const f32 kx = pKill->x, ky = pKill->y, kz = pKill->z;
     const f32 dot = (sx * kx + sy * ky) + sz * kz;
-    // The original stores through pDst, declared const.
+    // Stores through pDst, which the signature declares const.
     Vec* dst = const_cast< Vec* >(pDst);
     dst->x = sx - dot * kx;
     dst->y = sy - dot * ky;
@@ -1293,17 +1293,6 @@ namespace MR {
         }
     }
 
-    f32 diffAngleSigned(const Vec3f& rA, const Vec3f& rB, const Vec3f& rAxis) {
-        f32 angleDiff = diffAngleAbs(rA, rB);
-
-        Vec3f v = rA.cross(rAxis);
-
-        if (v.dot(rB) >= 0.0f) {
-            return angleDiff;
-        } else {
-            return -angleDiff;
-        }
-    }
 
     f32 diffAngleAbsHorizontal(const Vec3f& rA, const Vec3f& rB, const Vec3f& rAxis) {
         Vec3f horizonA, horizonB;

@@ -15,6 +15,7 @@
 #include "Game/Util/ScreenUtil.hpp"
 #include "Game/Util/SoundUtil.hpp"
 #include "Game/Util/StarPointerUtil.hpp"
+#include "Game/Util/StringUtil.hpp"
 #include <cstdio>
 
 namespace {
@@ -40,14 +41,12 @@ namespace {
     s32 getTextureNum(s32 chapterNo) {
         s32 textureNo = 0;
 
-        char chapterArcName[256];
-        nebula_snprintf(chapterArcName, sizeof(chapterArcName), "PictureBookChapter%d", chapterNo);
+        const MR::FormattedName chapterArcName("PictureBookChapter%d", chapterNo);
 
         for (;;) {
-            char pageTexName[256];
-            nebula_snprintf(pageTexName, sizeof(pageTexName), "Chapter%dPage%d.bti", chapterNo, textureNo + 1);
+            const MR::FormattedName pageTexName("Chapter%dPage%d.bti", chapterNo, textureNo + 1);
 
-            if (!MR::isExistResourceInArc(chapterArcName, pageTexName)) {
+            if (!MR::isExistResourceInArc(chapterArcName.c_str(), pageTexName.c_str())) {
                 break;
             }
 
@@ -59,10 +58,9 @@ namespace {
 
     s32 getPageNum(s32 chapterNo) {
         for (s32 pageNo = 0; pageNo < 100; pageNo++) {
-            char messageId[256];
-            nebula_snprintf(messageId, sizeof(messageId), "PictureBookChapter%d_Page%d_%03d", chapterNo, pageNo + 1, 0);
+            const MR::FormattedName messageId("PictureBookChapter%d_Page%d_%03d", chapterNo, pageNo + 1, 0);
 
-            if (MR::isExistGameMessage(messageId)) {
+            if (MR::isExistGameMessage(messageId.c_str())) {
                 continue;
             }
 
@@ -89,7 +87,7 @@ namespace NrvPictureBookLayout {
 
 PictureBookLayout::PictureBookLayout(s32 chapterMin, s32 chapterMax, bool isRosettaReading)
     : LayoutActor("絵本レイアウト", true), mChapterMin(chapterMin), mChapterMax(chapterMax), mChapterRosettaMax(chapterMax), mChapterNo(1), mPageNo(),
-      mTextIndex(), mNotReadedChapterNo(-1), mNotReadedPageNo(-1), mNotReadedTextIndex(-1), _44(), _48(), mTitleTexMap(), mCoverFrontTexMap(),
+      mTextIndex(), mNotReadedChapterNo(-1), mNotReadedPageNo(-1), mNotReadedTextIndex(-1), mTexMaps(), mChapterTexMaps(), mTitleTexMap(), mCoverFrontTexMap(),
       mCoverBackTexMap(), mNextItemDir(1), mIsNextItemFast(), mIconAButton(), mContentsButtonPaneController(), mCloseButton() {
     if (!isRosettaReading) {
         mContentsButtonPaneController = new ButtonPaneController*[getChapterMax()];
@@ -183,19 +181,17 @@ void PictureBookLayout::initTexture() {
         textureNum += ::getTextureNum(c);
     }
 
-    _44 = new Ui::TexMap*[textureNum];
+    mTexMaps = new Ui::TexMap*[textureNum];
 
     s32 textureIndex = 0;
 
     for (s32 c = mChapterMin; c <= mChapterMax; c++) {
-        char chapterArcName[256];
-        nebula_snprintf(chapterArcName, sizeof(chapterArcName), "PictureBookChapter%d", c);
+        const MR::FormattedName chapterArcName("PictureBookChapter%d", c);
 
         for (s32 p = 0; p < ::getTextureNum(c); p++) {
-            char pageTexName[256];
-            nebula_snprintf(pageTexName, sizeof(pageTexName), "Chapter%dPage%d.bti", c, p + 1);
+            const MR::FormattedName pageTexName("Chapter%dPage%d.bti", c, p + 1);
 
-            _44[textureIndex] = MR::createLytTexMap(chapterArcName, pageTexName);
+            mTexMaps[textureIndex] = MR::createLytTexMap(chapterArcName.c_str(), pageTexName.c_str());
             textureIndex++;
         }
     }
@@ -206,31 +202,30 @@ void PictureBookLayout::initTexture() {
 }
 
 void PictureBookLayout::initContentsButton() {
-    char messageId[256];
+    MR::FormattedName messageId;
 
     for (s32 i = 0; i < getChapterMax(); i++) {
         mContentsButtonPaneController[i] = new ButtonPaneController(this, ::cContentsPaneName[i], ::cContentsPointingPaneName[i], 0, false);
         mContentsButtonPaneController[i]->invalidateAppearance();
 
-        nebula_snprintf(messageId, sizeof(messageId), "PictureBookChapter%d_Title", i + 1);
+        messageId.format("PictureBookChapter%d_Title", i + 1);
 
-        MR::setTextBoxGameMessageRecursive(this, ::cContentsPaneName[i], messageId);
+        MR::setTextBoxGameMessageRecursive(this, ::cContentsPaneName[i], messageId.c_str());
     }
 }
 
 namespace {
     inline void setChapterTitle(LayoutActor* pActor, const char* pPaneName, s32 chapter) {
-        char messageId[256];
-        nebula_snprintf(messageId, sizeof(messageId), "PictureBookChapter%d_Title", chapter);
-        MR::setTextBoxGameMessageRecursive(pActor, pPaneName, messageId);
+        const MR::FormattedName messageId("PictureBookChapter%d_Title", chapter);
+        MR::setTextBoxGameMessageRecursive(pActor, pPaneName, messageId.c_str());
     }
 };  // namespace
 namespace {
-    inline bool setPageText(LayoutActor* pActor, char (&rMessageId)[256], const s32& rChapter, const s32& rPage, const s32& rTextIndex) {
-        nebula_snprintf(rMessageId, sizeof(rMessageId), "PictureBookChapter%d_Page%d_%03d", rChapter, rPage, rTextIndex);
+    inline bool setPageText(LayoutActor* pActor, MR::FormattedName& rMessageId, const s32& rChapter, const s32& rPage, const s32& rTextIndex) {
+        rMessageId.format("PictureBookChapter%d_Page%d_%03d", rChapter, rPage, rTextIndex);
 
-        if (MR::isExistGameMessage(rMessageId)) {
-            MR::setTextBoxGameMessageRecursive(pActor, "Text", rMessageId);
+        if (MR::isExistGameMessage(rMessageId.c_str())) {
+            MR::setTextBoxGameMessageRecursive(pActor, "Text", rMessageId.c_str());
 
             return true;
         }
@@ -244,7 +239,7 @@ bool PictureBookLayout::updateText() {
 
         return true;
     } else {
-        char messageId[256];
+        MR::FormattedName messageId;
         return ::setPageText(this, messageId, mChapterNo, mPageNo, mTextIndex);
     }
 }
@@ -267,7 +262,7 @@ void PictureBookLayout::updateTexture() {
     } else {
         s32 texMapIndex = textureNum + pageNo - 1;
         s32 ind = (textureNum != 0 ? texMapIndex % textureNum : texMapIndex) + 1;
-        Ui::TexMap* pTexMap = _48[ind - 1];
+        Ui::TexMap* pTexMap = mChapterTexMaps[ind - 1];
 
         MR::replacePaneTexture(this, "PicLeftPage", pTexMap, 0);
         MR::replacePaneTexture(this, "PicTurnRightPage", pTexMap, 0);
@@ -287,7 +282,7 @@ void PictureBookLayout::updateTexture() {
     } else {
         s32 texMapIndex = textureNum + pageNo - 1;
         s32 ind = (textureNum != 0 ? texMapIndex % textureNum : texMapIndex) + 1;
-        Ui::TexMap* pTexMap = _48[ind - 1];
+        Ui::TexMap* pTexMap = mChapterTexMaps[ind - 1];
 
         MR::replacePaneTexture(this, "PicRightPage", pTexMap, 0);
         MR::replacePaneTexture(this, "PicTurnLeftPage", pTexMap, 0);
@@ -345,14 +340,14 @@ bool PictureBookLayout::chapterNext() {
 }
 
 void PictureBookLayout::updateTexMapChapterBase() {
-    _48 = _44;
+    mChapterTexMaps = mTexMaps;
 
     for (s32 c = mChapterMin; c <= mChapterMax; c++) {
         if (c == mChapterNo) {
             break;
         }
 
-        _48 = &_48[::getTextureNum(c)];
+        mChapterTexMaps = &mChapterTexMaps[::getTextureNum(c)];
     }
 }
 
@@ -430,10 +425,9 @@ s32 PictureBookLayout::getCurrentMaxTextIndex() const {
     chapterNo = mChapterNo;
 
     for (s32 i = 0; i < 100; i++) {
-        char messageId[256];
-        nebula_snprintf(messageId, sizeof(messageId), "PictureBookChapter%d_Page%d_%03d", chapterNo, pageNo, i);
+        const MR::FormattedName messageId("PictureBookChapter%d_Page%d_%03d", chapterNo, pageNo, i);
 
-        if (MR::isExistGameMessage(messageId)) {
+        if (MR::isExistGameMessage(messageId.c_str())) {
             continue;
         }
 
@@ -833,7 +827,7 @@ void PictureBookLayout::exeClose() {
             MR::replacePaneTexture(this, "PicLeftPage", pTexMap, 0);
             MR::replacePaneTexture(this, "PicTurnRightPage", pTexMap, 0);
         } else {
-            pTexMap = _48[mPageNo - 2];
+            pTexMap = mChapterTexMaps[mPageNo - 2];
 
             MR::replacePaneTexture(this, "PicLeftPage", pTexMap, 0);
             MR::replacePaneTexture(this, "PicTurnRightPage", pTexMap, 0);

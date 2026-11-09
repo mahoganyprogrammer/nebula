@@ -11,6 +11,7 @@
 #include "Game/Ui/UiUtil.hpp"
 #include "Game/Ui/Window.hpp"
 #include "Game/Ui/Rect.hpp"
+#include <nebula_module.h>
 #include "Game/Util/MotionSignal.hpp"
 #include <cstring>
 
@@ -33,13 +34,9 @@ namespace {
         OrderBlock* mNext;
     };
 
-    // FNV-1a over a pane name's first 16 characters: all a pane name holds, and what EqualsResName compares.
+    // FNV-1a over a pane name.
     u32 HashPaneName(const char* pName) {
-        u32 hash = 0x811C9DC5u;
-        for (u32 i = 0; i < 16 && pName[i] != '\0'; i++) {
-            hash = (hash ^ static_cast< u8 >(pName[i])) * 0x01000193u;
-        }
-        return hash;
+        return uiNameHash(pName);
     }
 
     u32 CountBranch(const Pane* pPane) {
@@ -83,7 +80,7 @@ namespace Ui {
         // The block's bytes follow, from a cArenaAlign boundary.
     };
 
-    Layout::Layout() : mpRootPane(nullptr), mpGroupContainer(nullptr), mLayoutSize(0.0f, 0.0f), _20(0) {
+    Layout::Layout() : mpRootPane(nullptr), mpGroupContainer(nullptr), mLayoutSize(0.0f, 0.0f), mOriginType(0) {
     }
 
     // Every arena object newest first (a pane before the materials its constructor made; the groups, built last,
@@ -199,7 +196,7 @@ namespace Ui {
         for (u32 i = 0; i < order.mNum; i++) {
             const char* const pName = order.mPanes[i]->mName;
             u32 slot = HashPaneName(pName) & mask;
-            while (pSlots[slot] != 0 && strncmp(order.mPanes[pSlots[slot] - 1]->mName, pName, 16) != 0) {
+            while (pSlots[slot] != 0 && !uiSameName(order.mPanes[pSlots[slot] - 1]->mName, pName)) {
                 slot = (slot + 1) & mask;
             }
             if (pSlots[slot] == 0) {
@@ -240,7 +237,7 @@ namespace Ui {
         RefreshOrder();
         for (u32 slot = HashPaneName(pName) & mNameSlotMask; mNameSlots[slot] != 0; slot = (slot + 1) & mNameSlotMask) {
             Pane* const pPane = mOrder.mPanes[mNameSlots[slot] - 1];
-            if (strncmp(pPane->mName, pName, 16) == 0) {
+            if (uiSameName(pPane->mName, pName)) {
                 return pPane;
             }
         }
@@ -252,10 +249,14 @@ namespace Ui {
     bool Layout::Build(const void* lytResBuf, ResourceAccessor* pResAcsr) {
         const UiLayoutHeader* const pHead = static_cast< const UiLayoutHeader* >(lytResBuf);
         if (pHead->mMagic != cUiLayoutMagic || pHead->mVersion != cUiDataVersion) {
+            if (pHead->mMagic == cUiLayoutMagic) {
+                nebula_log("UiData: a layout of version %u; this game reads version %u (the pak needs a new cook)\n",
+                        static_cast< unsigned >(pHead->mVersion), static_cast< unsigned >(cUiDataVersion));
+            }
             return false;
         }
 
-        _20 = (pHead->mFlags & UiLayoutFlag_Centered) != 0 ? ORIGINTYPE_CENTER : ORIGINTYPE_TOPLEFT;
+        mOriginType = (pHead->mFlags & UiLayoutFlag_Centered) != 0 ? ORIGINTYPE_CENTER : ORIGINTYPE_TOPLEFT;
         mLayoutSize = Size(pHead->mWidth, pHead->mHeight);
 
         Pane** const ppPanes = static_cast< Pane** >(AllocMemory(sizeof(Pane*) * (pHead->mPaneCount + 1)));
@@ -553,7 +554,7 @@ namespace Ui {
     }
 
     const Rect Layout::GetLayoutRect() const {
-        if (_20 == 1) {
+        if (mOriginType == 1) {
             return Rect(-mLayoutSize.width / 2, mLayoutSize.height / 2, mLayoutSize.width / 2, -mLayoutSize.height / 2);
         }
 

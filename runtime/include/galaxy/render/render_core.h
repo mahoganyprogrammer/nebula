@@ -8,7 +8,7 @@
 #include "galaxy/render/ambient_occlusion_objects.h"
 #include "galaxy/render/frame_pass.h"
 #include "galaxy/frame_cadence_diagnostics.h"
-#include "galaxy/render/movie_replacement.h"
+#include "galaxy/render/movie_playback.h"
 #if defined(NEBULA_GPU_VULKAN)
 #include "galaxy/render/vk/renderer_vk.h"
 #else
@@ -88,9 +88,9 @@ public:
     // The list the next render_frame hands over.
     void attach_frame_list(NebulaFrameList* list) noexcept { producer_list_ = list; }
 
-    // Simulation thread: the movie frame later submissions carry (movie_replacement.h).
-    void attach_movie_frame(const char* name, std::int32_t frame, float frame_rate, std::uint32_t y, std::uint32_t u,
-                            std::uint32_t v, std::uint32_t width, std::uint32_t height) noexcept {
+    // Simulation thread: the movie frame later submissions carry (movie_playback.h).
+    void attach_movie_frame(const char* name, std::int32_t frame, float frame_rate, const void* data, std::uint64_t size,
+                            std::uint32_t width, std::uint32_t height) noexcept {
         MovieFrameMark& mark = producer_movie_frame_;
         if (frame == MovieFrameMark::kNone) {
             mark = {};
@@ -102,9 +102,10 @@ public:
         }
         mark.frame = frame;
         mark.frame_rate = frame_rate;
-        mark.y = y;
-        mark.u = u;
-        mark.v = v;
+        if (data != nullptr) {
+            mark.data = static_cast<const std::uint8_t*>(data);
+            mark.size = size;
+        }
         mark.width = width;
         mark.height = height;
     }
@@ -230,7 +231,16 @@ private:
     // The ring draws from `first` that are one draw with it; their indices in `index_count`.
     [[nodiscard]] std::uint32_t merge_ring_run(std::uint32_t first, std::uint32_t end, std::uint32_t matrix_at,
                                                std::uint32_t& index_count);
-    void walk_tables(std::uint32_t id, gpu::Table& textures, gpu::Table& samplers);
+    // The table's texture list for this walk: the buffer and its first pair (DrawRoot::table). Direct3D 12, and Vulkan with
+    // descriptor indexing (renderer_.bindless()).
+    void walk_tables(std::uint32_t id, gpu::Address& lists, std::uint32_t& first);
+    std::vector<TextureHandle> walk_handles_;
+    std::vector<std::uint32_t> walk_pairs_;
+#if defined(NEBULA_GPU_VULKAN)
+    // Vulkan without descriptor indexing: the table's descriptor sets, as many maps as a bound table holds.
+    void walk_bound_tables(std::uint32_t id, gpu::Table& textures, gpu::Table& samplers);
+    std::vector<SamplerKey> walk_keys_;
+#endif
     [[nodiscard]] bool item_culled(const NebulaFrameItem& item, const NebulaFramePass& pass, std::uint32_t state,
                                    const core::GpuMesh* mesh) noexcept;
     [[nodiscard]] gpu::Address ring_item_before(std::uint32_t index, gpu::Address own) const noexcept;
@@ -342,9 +352,9 @@ private:
     unsigned interp_gpu_cap_ = 7u;
     std::uint64_t interp_gpu_cap_serial_ = 0;
     std::uint64_t interp_gpu_checked_ = 0;
-    // Sequences after a rate or upscaler change whose GPU times are not used (pipeline,
+    // After a rate or upscaler change, the time (QPC) before which GPU times are not used (pipeline,
     // upscaler and target creation).
-    std::uint64_t interp_gpu_warm_until_ = 0;
+    std::int64_t interp_gpu_warm_until_qpc_ = 0;
     // A new generated frame configuration (interp_frames_ changed): both governors start over.
     void restart_interp_governors();
     std::uint64_t interp_gpu_capped_ = 0;   // sequences with fewer generated frames
@@ -409,8 +419,8 @@ private:
     float scene_jitter_px_[2]{};
     bool producer_movie_content_{},render_movie_content_{};
     MovieFrameMark producer_movie_frame_{}, render_movie_frame_{};
-    // HD movie replacements: the decoder (render thread) and the folders last applied.
-    MovieReplacements movie_replacements_;
+    // The game's movies: the cooked movie's decoder (a worker), HD replacements (render thread), the folders last applied.
+    MoviePlayback movie_playback_;
     std::uint64_t movie_mods_generation_ = ~0ull;
     std::uint64_t movie_stats_tick_ = 0;
     std::array<std::uint64_t,512> pointer_latency_bins_{};

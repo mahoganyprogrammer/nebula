@@ -8,6 +8,8 @@ struct ResTIMG;
 
 namespace MR {
     s32 getScreenWidth();
+    // The picture's shape as shown, width / height.
+    f32 getScreenAspect();
     // The picture's shape: the host latches the output's shape at each retrace, and the screen width, the camera's
     // aspect and the layout canvas follow it (wide == 0: 16:9).
     inline const NebulaDisplay& getDisplay() {
@@ -68,10 +70,6 @@ namespace MR {
     void setDepthOfFieldBlurIntensity(f32);
     void createCenterScreenBlur();
     void startCenterScreenBlur(s32, f32, u8, s32, s32);
-    void startGlobalTimer();
-    void resetGlobalTimer();
-    bool isGlobalTimerEnd();
-    void startGlobalTimerTimeUp();
     void requestPowerUpHPMeter();
     void requestForceAppearHPMeter();
     void startMissLayout();

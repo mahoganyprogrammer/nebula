@@ -8,12 +8,13 @@
 #include "Game/Util/HashUtil.hpp"
 #include "Game/Util/MemoryUtil.hpp"
 #include "Game/Util/StringUtil.hpp"
+#include "Game/System/NebulaArena.hpp"
 #include "Game/Particle/EmitterCore.hpp"
 #include <cstring>
 
 
 MultiEmitter::MultiEmitter(const char* pName, const Vec3f* pTranslation, const Vec3f* pRotation, const Vec3f* pScale, const Vec3f& rOffset)
-    : mEmitters(), mCallBack(), mParticleCallBack(), mSyncBck(), mAutoInfo(), mLightAffect(), mHash(), mFlags() {
+    : mEmitters(), mCallBack(), mParticleCallBack(), mSyncBck(), mAutoInfo(), mLightAffect(), mHash(), mName(), mCreateOnUnclipped(), mForceDeleteOnClipped() {
     mCallBack = new MultiEmitterCallBack(this, pTranslation, pRotation, pScale, rOffset);
     mParticleCallBack = new MultiEmitterParticleCallBack();
 
@@ -21,7 +22,7 @@ MultiEmitter::MultiEmitter(const char* pName, const Vec3f* pTranslation, const V
 }
 
 MultiEmitter::MultiEmitter(const char* pName, MtxPtr pMtx, const Vec3f& rOffset)
-    : mEmitters(), mCallBack(), mParticleCallBack(), mSyncBck(), mAutoInfo(), mLightAffect(), mHash(), mFlags() {
+    : mEmitters(), mCallBack(), mParticleCallBack(), mSyncBck(), mAutoInfo(), mLightAffect(), mHash(), mName(), mCreateOnUnclipped(), mForceDeleteOnClipped() {
     mCallBack = new MultiEmitterCallBack(this, pMtx, rOffset);
     mParticleCallBack = new MultiEmitterParticleCallBack();
 
@@ -29,7 +30,7 @@ MultiEmitter::MultiEmitter(const char* pName, MtxPtr pMtx, const Vec3f& rOffset)
 }
 
 MultiEmitter::MultiEmitter(const char* pName, MtxPtr pMtx, const Vec3f* pScale, const Vec3f& rOffset)
-    : mEmitters(), mCallBack(), mParticleCallBack(), mSyncBck(), mAutoInfo(), mLightAffect(), mHash(), mFlags() {
+    : mEmitters(), mCallBack(), mParticleCallBack(), mSyncBck(), mAutoInfo(), mLightAffect(), mHash(), mName(), mCreateOnUnclipped(), mForceDeleteOnClipped() {
     mCallBack = new MultiEmitterCallBack(this, pMtx, pScale, rOffset);
     mParticleCallBack = new MultiEmitterParticleCallBack();
 
@@ -37,7 +38,7 @@ MultiEmitter::MultiEmitter(const char* pName, MtxPtr pMtx, const Vec3f* pScale, 
 }
 
 MultiEmitter::MultiEmitter(const char* pName)
-    : mEmitters(), mCallBack(), mParticleCallBack(), mSyncBck(), mAutoInfo(), mLightAffect(), mHash(), mFlags() {
+    : mEmitters(), mCallBack(), mParticleCallBack(), mSyncBck(), mAutoInfo(), mLightAffect(), mHash(), mName(), mCreateOnUnclipped(), mForceDeleteOnClipped() {
     mCallBack = new MultiEmitterCallBack(this, Vec3f(0.0f, 0.0f, 0.0f));
     mParticleCallBack = new MultiEmitterParticleCallBack();
 
@@ -142,10 +143,18 @@ void MultiEmitter::setBaseScale(f32 scale) {
 
 void MultiEmitter::setName(const char* pName) {
     mHash = MR::getHashCode(pName);
+    const u32 size = static_cast< u32 >(strlen(pName)) + 1;
+    char* pCopy = new (NebulaArena::findFromRoot(this), 0) char[size];
+    memcpy(pCopy, pName, size);
+    mName = pCopy;
 }
 
 bool MultiEmitter::isEqualName(u16 hash) const {
-    return mHash == hash;
+    return static_cast< u16 >(mHash) == hash;
+}
+
+bool MultiEmitter::isEqualName(const char* pName, u32 hash) const {
+    return mName != nullptr && mHash == hash && MR::isEqualString(mName, pName);
 }
 
 ParticleEmitter* MultiEmitter::getParticleEmitter(int idx) const {
@@ -190,7 +199,7 @@ void MultiEmitter::initSyncBck(XanimePlayer* pPlayer, const char* pName, s32 cap
     mSyncBck->mStartFrame = startFrame;
 }
 
-void MultiEmitter::onDeleteSyncBck(bool deleteOnEnd, f32 endFrame) {
+void MultiEmitter::onDeleteSyncBck(f32 endFrame) {
     if (mSyncBck != nullptr) {
         mSyncBck->mEndFrame = endFrame;
     }
@@ -209,18 +218,16 @@ void MultiEmitter::setContinueBckEnd(bool continueAnimEnd) {
 }
 
 void MultiEmitter::onCreateSyncClipping() {
-    turnFlagOn(EmitterStatus_FirstEmit);
+    mCreateOnUnclipped = true;
 }
 
 void MultiEmitter::onForceDeleteSyncClipping() {
-    turnFlagOn(EmitterStatus_Immortal);
+    mForceDeleteOnClipped = true;
 }
 
 void MultiEmitter::stopEmitterOnClipped() {
-    if (isFlagOn(EmitterStatus_Immortal)) {
+    if (mForceDeleteOnClipped) {
         forceDeleteEmitter();
-    } else if (isFlagOn(EmitterStatus_RateStepEmit)) {
-        deleteEmitter();
     } else if (mSyncBck != nullptr) {
         stopCalcEmitter(-1);
         stopDrawParticle(-1);
@@ -235,7 +242,7 @@ void MultiEmitter::stopEmitterOnClipped() {
 }
 
 void MultiEmitter::playEmitterOffClipped() {
-    if (isFlagOn(EmitterStatus_FirstEmit)) {
+    if (mCreateOnUnclipped) {
         create(MR::getEffectSystem());
     } else if (mSyncBck != nullptr) {
         playCalcEmitter(-1);
@@ -271,7 +278,7 @@ void MultiEmitter::setGlobalRotationDegree(const Vec3f& rRotation, s32 idx) {
 }
 
 void MultiEmitter::allocateEmitter(const char* pName) {
-    MR::Vector< MR::FixedArray< u16, 32 > > indices;
+    MR::InlineVector< u16, 32 > indices;
     bool numbered = !MR::hasStringSpace(pName) && !MR::isDigitStringTail(pName, 2);
     if (numbered) {
         u16 index = 0;
@@ -302,7 +309,7 @@ void MultiEmitter::allocateEmitter(const char* pName) {
     }
 }
 
-SingleEmitter* MultiEmitter::getValidEmitter(s32 idx, bool) {
+SingleEmitter* MultiEmitter::getValidEmitter(s32 idx) {
     SingleEmitter* pEmitter = &mEmitters[idx];
     if (pEmitter->isValid()) {
         return pEmitter;

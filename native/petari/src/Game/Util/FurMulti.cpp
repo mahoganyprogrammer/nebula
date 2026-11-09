@@ -5,13 +5,13 @@
 #include "Game/Util/FurDrawer.hpp"
 #include "Game/Util/FurParam.hpp"
 #include "Game/Util/LiveActorUtil.hpp"
-#include "Game/Util/MemoryUtil.hpp"
+#include "Game/System/Arenas.hpp"
 #include "Game/Util/ModelUtil.hpp"
 #include "Game/Render/Model.hpp"
 #include "Game/Render/Material.hpp"
 #include "Game/Render/ModelData.hpp"
 #include "Game/System/NebulaArena.hpp"
-#include <JSystem/JUtility/JUTTexture.hpp>
+#include "Game/Render/GameTexture.hpp"
 #include <cstring>
 #include <nebula_format.h>
 #include "Game/Util/StringUtil.hpp"
@@ -71,7 +71,7 @@ void FurMulti::setLayerDirect(u32 layer, u32 shape, u32 numLayers, FurParam* pPa
         pDensity->mMaxLod = 0;
         pDensity->mImageNum = 1;
         pDensity->mLodBias = 0;
-        JUTTexture* pTexture = new JUTTexture(pDensity);
+        GameTexture* pTexture = new GameTexture(pDensity);
         mFurCtrls[layer]->mDrawer->mFurTexture = pTexture;
     } else {
         mFurCtrls[layer]->createFurMap();
@@ -113,12 +113,12 @@ namespace MR {
         u32 i;
         u32 shape;
         FurMulti* pMulti;
-        CurrentHeapRestorer heapRestorer(getSceneHeap());
+        NebulaArena::CurrentScope heapRestorer(Arenas::scene());
         ModelData* pModelData = getModelData(pActor);
         count = 0;
 
         for (i = 0; i < pModelData->getMaterialCount(); i++) {
-            if (strstr(pModelData->getMaterialName(i), "Fur")) {
+            if (MR::isEqualSubString(pModelData->getMaterialName(i), "Fur")) {
                 count++;
             }
         }
@@ -135,7 +135,7 @@ namespace MR {
         u32 layer = 0;
 
         for (u32 i = 0; i < pModelData->getMaterialCount(); i++) {
-            if (strstr(pModelData->getMaterialName(i), "Fur")) {
+            if (MR::isEqualSubString(pModelData->getMaterialName(i), "Fur")) {
                 shape = pModelData->getMaterialAt(i)->getMesh()->getIndex();
                 MR::FormattedName name("%sBody", pModelData->getMaterialName(i));
                 ResTIMG* pBody;

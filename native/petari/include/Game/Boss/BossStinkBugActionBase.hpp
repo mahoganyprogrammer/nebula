@@ -11,8 +11,6 @@ class BossStinkBugActionBase : public ActorStateBase< BossStinkBug > {
 public:
     BossStinkBugActionBase(const char*, BossStinkBug*);
 
-    virtual ~BossStinkBugActionBase();
-
     virtual bool isValidFollowId(s32 id) const {
         return false;
     };
@@ -81,5 +79,4 @@ public:
     f32 mPrevCameraDistance;
     s32 mApproachStep;
     bool mIsNearPlayer;
-    bool mWasNearPlayer;
 };

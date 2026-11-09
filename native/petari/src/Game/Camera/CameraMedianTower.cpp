@@ -1,14 +1,14 @@
 #include "Game/Camera/CameraMedianTower.hpp"
-#include "Game/Camera/CamTranslatorMedianTower.hpp"
+#include "Game/Camera/CameraParamChunk.hpp"
 #include "Game/Camera/CameraLocalUtil.hpp"
 #include "Game/Camera/CameraTargetObj.hpp"
 #include "Game/Util/CameraUtil.hpp"
 #include "Game/Util/MathUtil.hpp"
 
 namespace {
-    static const f32 sPartialRate = 0.5f;
-    static const f32 sAngularVel = 0.5f;
-    static const s32 sInterpolate = 120;
+    const f32 sPartialRate = 0.5f;
+    const f32 sAngularVel = 0.5f;
+    const s32 sInterpolate = 120;
 };  // namespace
 
 CameraMedianTower::CameraMedianTower(const char* pName)
@@ -24,11 +24,13 @@ void CameraMedianTower::reset() {
 }
 
 CameraTargetObj* CameraMedianTower::calc() {
+    CameraTargetObj* target = CameraLocalUtil::getTarget(this);
+
     Vec3f watchOffset;
-    CameraLocalUtil::makeWatchOffset(&watchOffset, this, CameraLocalUtil::getTarget(this), 0.1f / 15.0f);
+    CameraLocalUtil::makeWatchOffset(&watchOffset, this, target, 0.1f / 15.0f);
 
     Vec3f pos;
-    pos.set(CameraLocalUtil::getTarget(this)->getPosition() * (1.0f - mPartialRate) + CameraLocalUtil::getVecReg(mString) * mPartialRate);
+    pos.set(target->getPosition() * (1.0f - mPartialRate) + CameraLocalUtil::getVecReg(mString) * mPartialRate);
 
     Vec3f watchPos = mWPoint;
     mZoneMatrix.mult(watchPos, watchPos);
@@ -66,11 +68,12 @@ CameraTargetObj* CameraMedianTower::calc() {
     CameraLocalUtil::setUpVecAndWatchUpVec(this, up);
     updateReset(newPos, watchPos, axis);
 
-    return CameraLocalUtil::getTarget(this);
+    return target;
 }
 
-CamTranslatorBase* CameraMedianTower::createTranslator() {
-    return new CamTranslatorMedianTower(this);
+void CameraMedianTower::setParamFromChunk(const CameraParamChunk* pChunk) {
+    CameraGeneralParam* general = pChunk->mGeneralParam;
+    setParam(general->mString.getCharPtr(), general->mWPoint, general->mAxis, general->mAngleA, general->mUp.x, general->mUp.y, general->mUp.z);
 }
 
 void CameraMedianTower::calcFovyPos(Vec3f* pFovPos, const Vec3f& rFront, const Vec3f& rVec, const Vec3f& rPos) {

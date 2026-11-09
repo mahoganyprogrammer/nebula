@@ -21,7 +21,7 @@
 #include "Game/Util/SystemUtil.hpp"
 #include <nebula_geometry.hpp>
 
-#include <JSystem/JUtility/JUTTexture.hpp>
+#include "Game/Render/GameTexture.hpp"
 #include "Game/System/NebulaInput.hpp"
 
 namespace {
@@ -45,15 +45,9 @@ namespace {
     static const f32 sHoldRadius = 45;
     static const f32 sHandRadius = 20;
 
-    // static const _32 sStepRadian =
     static const s32 hGripTime = 20;
     static const s32 hReleaseTime = 30;
     static const s32 hHideRumbleTime = 30;
-    // static const _32 hInvalidateWaitFrame =
-    // static const _32 sStarVelZeroRange =
-    // static const _32 sStarRateScale =
-    // static const _32 sStarRateMax =
-    // static const _32 h16x9ScaleX =
     static const f32 sRotateMult = 900.0f;
     // static const f32 sRotateHandMult =
     static const f32 hEndAnimRate = 2.0f;
@@ -78,7 +72,7 @@ namespace NrvStarPointerLayout {
 
 StarPointerLayout::StarPointerLayout(const char* pName)
     : LayoutActor(pName, true), mPosition(0.0f, 0.0f), mPointerKind(StarPointerKind_NULL), mAnimType(AnimType_HandPaa), mTouchTimer(),
-      mPadChannel(-1), mRadius(::sNormalRadius), _3C(),
+      mPadChannel(-1), mRadius(::sNormalRadius),
       mDirector(), mBlur(), mCommandStream(), mNumber(), mActor(), mNewTouchedID(), mTouchedID(), mStartTouch(), mStartDisableShoot(), mSingleTouch(),
       mShootDisabled(), mIsPointerValid(true), mIsAppear(true), mAppearTime() {
 }
@@ -107,7 +101,7 @@ void StarPointerLayout::initWithPort(s32 channel) {
 
     initNerve(GET_NERVE(StarPointerLayout, HostTypeNrvHideImmediately));
 
-    mBlur = new StarPointerBlur(new JUTTexture(MR::loadTexFromArc("StarPointerBlur", "Blur.bti")));
+    mBlur = new StarPointerBlur(new GameTexture(MR::loadTexFromArc("StarPointerBlur", "Blur.bti")));
 
     mCommandStream = new StarPointerCommandStream(&mPosition);
 

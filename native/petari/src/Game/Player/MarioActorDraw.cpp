@@ -24,7 +24,7 @@
 #include "Game/Util/JointUtil.hpp"
 #include "Game/Util/LiveActorUtil.hpp"
 #include "Game/Util/MathUtil.hpp"
-#include "Game/Util/MemoryUtil.hpp"
+#include "Game/System/Arenas.hpp"
 #include "Game/Util/ModelUtil.hpp"
 #include "Game/Util/MotionSignal.hpp"
 #include "Game/Util/MtxUtil.hpp"
@@ -34,8 +34,7 @@
 #include "Game/Render/Material.hpp"
 #include "Game/System/NebulaArena.hpp"
 #include "Game/System/NebulaMods.hpp"
-#include <JSystem/JUtility/JUTTexture.hpp>
-#include <cstring>
+#include "Game/Render/GameTexture.hpp"
 #include "Game/Util/StringUtil.hpp"
 
 namespace MR {
@@ -88,14 +87,11 @@ void MarioActor::initDrawAndModel() {
     mTornadoMario = nullptr;
     initFireBall();
 
-    mModelSet |= 0x4;
-
     initBeeMario();
     initIceMario();
     initInvincibleMario();
     initHopperMario();
     initTeresaMario();
-    mModelSet |= 0x80;
     initBoneMario();
     initTornadoMario();
     initModPowerUpModels();
@@ -114,16 +110,12 @@ void MarioActor::initDrawAndModel() {
     createRainbowMesh();
 
     {
-        MR::CurrentHeapRestorer restorer(static_cast< NebulaArena* >(MR::getSceneHeap()));
-        mBlurTexture = JUTTexture::createTarget(0.2f, 0.14f);
+        NebulaArena::CurrentScope restorer(Arenas::scene());
+        mBlurTexture = GameTexture::createTarget(0.2f, 0.14f);
 
         for (u32 i = 0; i < 2; i++) {
-            mMaskTextures[i] = new JUTTexture(8, 8, NEBULA_TEXTURE_LINEAR_LA8);
-            mMaskTextures[i]->mWrapS = 1;
-            mMaskTextures[i]->mWrapT = 1;
-            mMaskTextures[i]->mMinType = 0;
-            mMaskTextures[i]->mMagType = 0;
-            mMaskTextures[i]->init();
+            mMaskTextures[i] = new GameTexture(8, 8, NEBULA_TEXTURE_LINEAR_LA8);
+            mMaskTextures[i]->setSampling(1, 1, 0, 0);
         }
 
         mMaskIndex = 0;
@@ -171,7 +163,6 @@ void MarioActor::initBeeMario() {
     mBeeWing->makeActorDead();
 
     mBeeWingAnim = 0;
-    mModelSet |= 0x10;
 }
 
 void MarioActor::initHopperMario() {
@@ -201,7 +192,6 @@ void MarioActor::initHopperMario() {
     mHopperModel->kill();
     MR::hideModel(mHopperModel);
     MR::hideJoint(mHopperModel, "Face0");
-    mModelSet |= 0x20;
 }
 
 void MarioActor::initIceMario() {
@@ -240,7 +230,6 @@ void MarioActor::initIceMario() {
     }
 
     mIceStepIndex = 0;
-    mModelSet |= 0x8;
 }
 
 void MarioActor::initInvincibleMario() {
@@ -271,7 +260,6 @@ void MarioActor::initInvincibleMario() {
     mInvincibleModel->kill();
     MR::hideModel(mInvincibleModel);
     MR::startBrk(mInvincibleModel, "InvincibleMario");
-    mModelSet |= 0x2;
 }
 
 void MarioActor::initTeresaMario() {
@@ -291,7 +279,6 @@ void MarioActor::initTeresaMario() {
     mTeresaBlinkTimer = 0;
 
     MR::initShadowVolumeSphere(mTeresaModel, 90.0f);
-    mModelSet |= 0x40;
     initTeresaMarioAnimation();
 }
 
@@ -300,7 +287,6 @@ void MarioActor::initTornadoMario() {
     mTornadoMario = new TornadoMario(modelName);
     mTornadoMario->initWithoutIter();
     mTornadoEnd = 0;
-    mModelSet |= 0x200;
 }
 
 void MarioActor::initBoneMario() {
@@ -318,7 +304,6 @@ void MarioActor::initBoneMario() {
     mModels[1] = model;
     mBoneModel->kill();
     MR::hideModel(mBoneModel);
-    mModelSet |= 0x100;
 }
 
 void MarioActor::initModPowerUpModels() {
@@ -538,6 +523,16 @@ bool MarioActor::isAllHidden() const {
     return hidden;
 }
 
+// The first of a model's four eyelid textures; texNo when it has none.
+static u32 findEyeLidTexture(ModelData* pModelData, u32 textureNum, u32 texNo) {
+    for (u32 i = 0; i < textureNum; i++) {
+        if (MR::isEqualString(pModelData->getTextureName(i), "mario_eyeLid.0")) {
+            return i;
+        }
+    }
+    return texNo;
+}
+
 void MarioActor::swapTextureInit() {
     ModelData* actorData = MR::getModelData(this);
     const u32 textureCount = actorData->getTextureCount();
@@ -550,15 +545,7 @@ void MarioActor::swapTextureInit() {
 
     mSwapImages = new const void*[12]();
 
-    u32 texNo = 0;
-    for (u32 i = 0; i < textureCount; i++) {
-        ModelData* modelData = MR::getModelData(this);
-        const char* texName = modelData->getTextureName(i);
-        if (strcmp(texName, "mario_eyeLid.0") == 0) {
-            texNo = i;
-            break;
-        }
-    }
+    u32 texNo = findEyeLidTexture(actorData, textureCount, 0);
 
     mEyeLidTexBase = texNo;
     mSwapImages[0] = mSwapTextures[texNo]->image();
@@ -570,14 +557,7 @@ void MarioActor::swapTextureInit() {
         ModelData* beeData = MR::getModelData(mBeeModel);
         const u32 textureNum = beeData->getTextureCount();
 
-        for (u32 i = 0; i < textureNum; i++) {
-            ModelData* modelData = MR::getModelData(mBeeModel);
-            const char* texName = modelData->getTextureName(i);
-            if (strcmp(texName, "mario_eyeLid.0") == 0) {
-                texNo = i;
-                break;
-            }
-        }
+        texNo = findEyeLidTexture(beeData, textureNum, texNo);
 
         for (u32 i = 0; i < textureNum; i++) {
             mSwapTextures[i] = MR::getResTIMG(mBeeModel, i);
@@ -593,14 +573,7 @@ void MarioActor::swapTextureInit() {
         ModelData* hopperData = MR::getModelData(mHopperModel);
         const u32 textureNum = hopperData->getTextureCount();
 
-        for (u32 i = 0; i < textureNum; i++) {
-            ModelData* modelData = MR::getModelData(mHopperModel);
-            const char* texName = modelData->getTextureName(i);
-            if (strcmp(texName, "mario_eyeLid.0") == 0) {
-                texNo = i;
-                break;
-            }
-        }
+        texNo = findEyeLidTexture(hopperData, textureNum, texNo);
 
         for (u32 i = 0; i < textureNum; i++) {
             mSwapTextures[i] = MR::getResTIMG(mHopperModel, i);
@@ -650,7 +623,7 @@ void MarioActor::updateFace() {
         return;
     }
 
-    if (MR::isHiddenModel(this) || is481or482On() || mMario->mMovementStates.tornado || mDarkMaskOn) {
+    if (MR::isHiddenModel(this) || isHidden() || mMario->mMovementStates.tornado || mDarkMaskOn) {
         MR::hideModel(mFaceModel);
         return;
     }
@@ -682,7 +655,7 @@ void MarioActor::updateFace() {
 
 void MarioActor::initBlur() {
     for (u32 i = 0; i < 2; i++) {
-        for (u32 j = 0; j < 8; j++) {
+        for (u32 j = 0; j < cBlurPoseNum; j++) {
             Model::initPose(&mBlurPoses[i][j]);
         }
     }
@@ -724,7 +697,7 @@ void MarioActor::draw() const {
         mFootPrint->draw();
     }
 
-    if (!is481or482On() && !mPreWipeOn && !mDarkMaskOn) {
+    if (!isHidden() && !mPreWipeOn && !mDarkMaskOn) {
         if (mWallShadeOn) {
             drawWallShade(mWallShadePos, mWallShadeNormal, mWallShadeDist);
         }
@@ -907,8 +880,8 @@ void MarioActor::drawModelBlur() const {
     Mtx inv;
     NebulaMtxInverse(const_cast< Mtx34f& >(mPrevViewMtx).toMtxPtr(), inv);
     MR::multMtx(inv, inv, MR::getCameraViewMtx());
-    for (u32 i = 1; i < 8; i++) {
-        const u32 idx = static_cast< u32 >(i + mBlurPoseIndex) & 7;
+    for (u32 i = 1; i < cBlurPoseNum; i++) {
+        const u32 idx = static_cast< u32 >(i + mBlurPoseIndex) % cBlurPoseNum;
         ModelPose& rPose = const_cast< MarioActor* >(this)->mBlurPoses[mBlurPoseSet][idx];
         if (!mBaseMtxStale) {
             Model::copyPose(&rPose, mBlurPoses[1 - mBlurPoseSet][idx]);
@@ -917,7 +890,7 @@ void MarioActor::drawModelBlur() const {
         model->setDrawPose(&rPose);
 
 
-        model->setDynamicList(&mGhostTints[idx + ((i - 1) << 3)]);
+        model->setDynamicList(&mGhostTints[(i - 1) * cBlurPoseNum + idx]);
         model->directDraw();
     }
 

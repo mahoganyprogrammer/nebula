@@ -11,10 +11,6 @@
 #include "Game/Util/StringUtil.hpp"
 #include "Game/Util/TalkUtil.hpp"
 
-// done due to inlining
-template const bool Table::getValue< s32 >(int, const char*, s32*) const;
-template const bool Table::getValue< const char* >(int, const char*, const char**) const;
-
 namespace {
     TalkMessageCtrl* findTalkMessageCtrl(LiveActor* pActor) {
         DemoExecutor* executor = DemoFunction::findDemoExecutorActive(pActor);
@@ -42,9 +38,6 @@ DemoActionInfo::DemoActionInfo() {
     mAnimName = nullptr;
     mCastCapacity = 128;
     mCastCount = 0;
-    mCastList = nullptr;
-    mFunctors = nullptr;
-    mNerves = nullptr;
     mCastList = new LiveActor*[mCastCapacity];
     mFunctors = new MR::FunctorBase*[mCastCapacity];
     mNerves = new const Nerve*[mCastCapacity];

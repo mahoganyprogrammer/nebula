@@ -1,5 +1,5 @@
 #include "Game/Camera/CameraPointer.hpp"
-#include "Game/Camera/CamTranslatorPointer.hpp"
+#include "Game/Camera/CameraParamChunk.hpp"
 #include "Game/Camera/CameraLocalUtil.hpp"
 #include "Game/Camera/CameraTargetObj.hpp"
 #include "Game/Util/PlayerInputUtil.hpp"
@@ -14,7 +14,7 @@ namespace {
 
 CameraPointer::CameraPointer(const char* pName)
     : Camera(pName), mPointerDistance(), mRealPointPos(0.0f, 0.0f), mBlendPointPos(0.0f, 0.0f), mResetPointingPos(true), mCameraType(), mDist(),
-      mFovy(40.0f), mAngleXRange(PI / 2.0f), mAngleYRange(PI / 2.0f), mAngleX(), mSpeedBlendRate(0.05f), mBlendFriction(0.99f), mIsVertical(),
+      mFovy(40.0f), mAngleXRange(PI / 2.0f), mAngleYRange(PI / 2.0f), mAngleX(), mSpeedBlendRate(0.05f), mBlendFriction(0.99f),
       mAngleYMin() {
     mMtx.identity();
 }
@@ -128,13 +128,13 @@ CameraTargetObj* CameraPointer::calc() {
     panXMtx.identity();
     panXMtx.makeRotate(Vec3f(0.0f, 1.0f, 0.0f), -mBlendPointPos.x * mAngleXRange);
 
-    Pos3f mtx3;
-    mtx3.identity();
-    mtx3.makeRotate(Vec3f(1.0f, 0.0f, 0.0f), -mAngleX);
+    Pos3f tiltMtx;
+    tiltMtx.identity();
+    tiltMtx.makeRotate(Vec3f(1.0f, 0.0f, 0.0f), -mAngleX);
 
     Pos3f rotMtx;
     rotMtx.concat(panXMtx, panYMtx);
-    rotMtx.concat(mtx3, rotMtx);
+    rotMtx.concat(tiltMtx, rotMtx);
     rotMtx.concat(mMtx, rotMtx);
     Vec3f front;
     rotMtx.getZDir(front);
@@ -146,6 +146,7 @@ CameraTargetObj* CameraPointer::calc() {
     return nullptr;
 }
 
-CamTranslatorBase* CameraPointer::createTranslator() {
-    return new CamTranslatorPointer(this);
+void CameraPointer::setParamFromChunk(const CameraParamChunk* pChunk) {
+    CameraGeneralParam* general = pChunk->mGeneralParam;
+    setParam(general->mNum1, general->mDist, general->mAngleA, general->mAngleB, general->mWPoint.z, general->mWPoint.x, general->mWPoint.y, general->mUp.x);
 }

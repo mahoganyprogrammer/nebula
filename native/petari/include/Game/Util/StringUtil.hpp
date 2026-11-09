@@ -10,14 +10,16 @@ namespace MR {
     // pParent/pChild.
     void addFilePrefix(FormattedName& rDst, const char* pChild, const char* pParent);
 
-    // Localized; size in bytes.
-    void makeDateString(char16_t* pDst, s32 size, s32 year, s32 month, s32 day);
-    void makeTimeString(char16_t* pDst, s32 size, s32 hour, s32 minute);
-    // Minutes, seconds and centiseconds of a frame count.
-    void makeClearTimeString(char16_t* pDst, u32 frame);
-    void makeMinuteAndSecondString(char16_t* pDst, u32 frame);
-    void makeRaceBestTimeString(char16_t* pDst, int raceId);
-    void makeRaceCurrentTimeString(char16_t* pDst);
+    class Text16;
+
+    // The date or time in the played language, whole, into rDst; returns its text.
+    const char16_t* makeDateString(Text16& rDst, s32 year, s32 month, s32 day);
+    const char16_t* makeTimeString(Text16& rDst, s32 hour, s32 minute);
+    // Minutes, seconds and centiseconds of a step count, whole, into rDst; each returns its text.
+    const char16_t* makeClearTimeString(Text16& rDst, u32 frame);
+    const char16_t* makeMinuteAndSecondString(Text16& rDst, u32 frame);
+    const char16_t* makeRaceBestTimeString(Text16& rDst, int raceId);
+    const char16_t* makeRaceCurrentTimeString(Text16& rDst);
 
     char16_t* addNumberFontTag(char16_t* pDst, int tag);
     char16_t* addNumberFontTag(char16_t* pDst, const char16_t* pFmt, ...);
@@ -32,16 +34,20 @@ namespace MR {
     // At most num - 1 characters, always terminated.
     void copyString(char* pDst, const char* pSrc, u32 num);
     void copyString(char16_t* pDst, const char16_t* pSrc, u32 num);
-    // The first num characters, cut to fit dstSize with the terminator.
-    void extractString(char* pDst, const char* pSrc, u32 num, u32 dstSize);
     // num counts the terminator; returns the characters written without it.
     int convertUTF16ToASCII(char* pDst, const char16_t* pSrc, s32 num);
 
     int strcasecmp(const char* pStr1, const char* pStr2);
+    // Byte order: below zero when pStr1 comes first, zero when equal.
+    int compareString(const char* pStr1, const char* pStr2);
     bool isEqualString(const char* pStr1, const char* pStr2);
+    // Whether pStr starts with all of pPrefix.
+    bool isEqualStringPrefix(const char* pStr, const char* pPrefix);
     bool isEqualStringCase(const char* pStr1, const char* pStr2);
     // Whether pStr contains pSubStr.
     bool isEqualSubString(const char* pStr, const char* pSubStr);
+    // Whether pStr starts with pHead.
+    bool isHeadString(const char* pStr, const char* pHead);
     bool hasStringSpace(const char* pStr);
     // Whether the last digitNum characters are digits.
     bool isDigitStringTail(const char* pStr, int digitNum);
@@ -85,5 +91,42 @@ namespace MR {
     private:
         char* mText;
         char mInline[256];
+    };
+
+    // UTF-16 text with no length limit: 128 code units in itself, past that the heap.
+    class Text16 {
+    public:
+        Text16() : mText(mInline), mRoom(cInline) {
+            mInline[0] = u'\0';
+        }
+        ~Text16();
+
+        Text16(const Text16&) = delete;
+        Text16& operator=(const Text16&) = delete;
+
+        // Writable storage of `units` code units, the terminator included; the previous text is gone.
+        char16_t* room(u32 units);
+        // Room for `units` code units in all, the first `used` kept.
+        char16_t* grow(u32 used, u32 units);
+        // The formatted text (MR::formatTextV's conversions), whole: the room grows until it fits.
+        const char16_t* format(const char16_t* pFormat, va_list args);
+
+        const char16_t* c_str() const {
+            return mText;
+        }
+
+        char16_t* data() {
+            return mText;
+        }
+
+        u32 capacity() const {
+            return mRoom;
+        }
+
+    private:
+        static const u32 cInline = 128;
+        char16_t* mText;
+        u32 mRoom;
+        char16_t mInline[cInline];
     };
 };  // namespace MR

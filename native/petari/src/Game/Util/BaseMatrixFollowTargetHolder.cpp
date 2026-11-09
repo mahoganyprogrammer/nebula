@@ -11,11 +11,7 @@ namespace {
     }
 };  // namespace
 
-BaseMatrixFollower::BaseMatrixFollower(NameObj* pObj, const TableIter& rIter) {
-    mFollowerObj = pObj;
-    mLinkInfo = nullptr;
-    mFollowTarget = nullptr;
-    mFollowID = -1;
+BaseMatrixFollower::BaseMatrixFollower(const TableIter& rIter) : mLinkInfo(nullptr), mFollowTarget(nullptr), mFollowID(-1) {
     MR::getPlacementFollowID(rIter, &mFollowID);
     mLinkInfo = new PlacementLink(rIter, false);
 }
@@ -83,9 +79,6 @@ BaseMatrixFollowTargetHolder::BaseMatrixFollowTargetHolder(const char* pName, s3
     mFollowers.init(followerCapacity);
     MR::connectToSceneMapObjMovement(this);
 }
-
-template MR::Vector< MR::AssignableArray< BaseMatrixFollowTarget* > >::~Vector();
-template MR::Vector< MR::AssignableArray< BaseMatrixFollower* > >::~Vector();
 
 void BaseMatrixFollowTargetHolder::initAfterPlacement() {
     for (u32 i = 0; i < mFollowers.size(); i++) {
@@ -173,10 +166,4 @@ namespace MR {
 };  // namespace MR
 
 void BaseMatrixFollower::update() {
-}
-
-template MR::AssignableArray< BaseMatrixFollowTarget* >::~AssignableArray();
-template MR::AssignableArray< BaseMatrixFollower* >::~AssignableArray();
-
-BaseMatrixFollowTargetHolder::~BaseMatrixFollowTargetHolder() {
 }

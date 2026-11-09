@@ -3,7 +3,7 @@
 #include "Game/Screen/LayoutCoreUtil.hpp"
 #include "Game/System/LayoutHolder.hpp"
 #include "Game/Util/LayoutUtil.hpp"
-#include <JSystem/JUtility/JUTNativeLog.hpp>
+#include <nebula_module.h>
 #include <Game/Ui/Layout.hpp>
 #include <Game/Ui/Pane.hpp>
 #include <Game/Ui/TextBox.hpp>
@@ -17,6 +17,10 @@ namespace {
         }
         const UiLayoutHeader* const pLayout = static_cast< const UiLayoutHeader* >(pHolder->mLayoutRes.getRes(0u));
         if (pLayout == nullptr || pLayout->mMagic != cUiLayoutMagic || pLayout->mVersion != cUiDataVersion) {
+            if (pLayout != nullptr && pLayout->mMagic == cUiLayoutMagic) {
+                nebula_log("UiData: a layout of version %u; this game reads version %u (the pak needs a new cook)\n",
+                        static_cast< unsigned >(pLayout->mVersion), static_cast< unsigned >(cUiDataVersion));
+            }
             return Ui::ResBlockSet{nullptr, nullptr, nullptr};
         }
         return Ui::ResBlockSet{pLayout, pHolder, nullptr};
@@ -46,7 +50,7 @@ bool NebulaPaneKit::init(LayoutHolder* pHolder, const char* pArchive, Ui::Layout
         if (mBlocks.pLayout == nullptr) {
             return false;
         }
-        JUTNativeLog("%s: a mod's copy has no usable layout; the game's own is used\n", pArchive);
+        nebula_log("%s: a mod's copy has no usable layout; the game's own is used\n", pArchive);
     }
     return true;
 }
@@ -76,7 +80,7 @@ Ui::Pane* NebulaPaneKit::build(const char* pName, const char* pNewName, s32 kind
         if (idx == cUiNone16) {
             return nullptr;
         }
-        JUTNativeLog("%s: a mod's copy has no pane %s of its kind; the game's own is used\n", mpArchive, pName);
+        nebula_log("%s: a mod's copy has no pane %s of its kind; the game's own is used\n", mpArchive, pName);
     }
     Ui::Pane* pPane = mpInto->BuildPaneObj(pBlocks->PaneAt(idx), *pBlocks);
     if (pPane != nullptr) {

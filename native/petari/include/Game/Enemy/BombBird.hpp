@@ -20,7 +20,6 @@ class BombBird : public LiveActor {
 public:
     BombBird(const char*);
 
-    virtual ~BombBird() override;
     virtual void init(const TableIter&) override;
     virtual void makeActorDead() override;
     virtual void startClipped() override;
@@ -48,7 +47,7 @@ public:
     void exeBindStarPointer();
     void endBindStarPointer();
 
-    MR::FixedArray< BombBirdBomb*, 3 > mBombs;
+    MR::InlineArray< BombBirdBomb*, 3 > mBombs;
     BombBirdBomb* mHeldBomb;
     Vec3f mFront;
     bool mSearchPlayer;

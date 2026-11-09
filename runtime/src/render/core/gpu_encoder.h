@@ -33,7 +33,11 @@ struct DrawRoot {
     std::uint32_t flags = 0u;
     float half_line = 0.0f;
     float half_point = 0.0f;
+    std::uint32_t table = 0u;  // the draw's first entry in the frame's texture lists (draw_tables)
 };
+
+inline constexpr unsigned kDrawRootWords = sizeof(DrawRoot) / 4u;
+static_assert(sizeof(DrawRoot) == 20u);
 
 struct ViewportRect {
     float x = 0.0f, y = 0.0f, width = 0.0f, height = 0.0f, min_depth = 0.0f, max_depth = 1.0f;
@@ -56,9 +60,8 @@ public:
     // Other code bound things: nothing is taken as bound any more.
     void reset() noexcept {
         pipeline_ = nullptr;
-        view_ = vertex_rows_ = pixel_rows_ = rows_ = instances_ = 0u;
+        view_ = vertex_rows_ = pixel_rows_ = rows_ = instances_ = lists_ = 0u;
         textures_ = samplers_ = 0u;
-        texture_heap_ = sampler_heap_ = nullptr;
         root_valid_ = scissor_valid_ = viewport_valid_ = topology_set_ = index_valid_ = false;
         for (StreamView& s : streams_) s = StreamView{};
     }
@@ -88,21 +91,15 @@ public:
     }
     void set_root(const DrawRoot& root) noexcept {
         if (!root_valid_ || root.first_instance != root_.first_instance || root.flags != root_.flags ||
-            root.half_line != root_.half_line || root.half_point != root_.half_point) {
-            list_->SetGraphicsRoot32BitConstants(3u, 4u, &root, 0u);
+            root.half_line != root_.half_line || root.half_point != root_.half_point || root.table != root_.table) {
+            list_->SetGraphicsRoot32BitConstants(3u, kDrawRootWords, &root, 0u);
             root_ = root;
             root_valid_ = true;
         }
     }
-    void set_descriptor_heaps(ID3D12DescriptorHeap* textures, ID3D12DescriptorHeap* samplers) noexcept {
-        if (textures != texture_heap_ || samplers != sampler_heap_) {
-            ID3D12DescriptorHeap* heaps[] = {textures, samplers};
-            list_->SetDescriptorHeaps(2u, heaps);
-            texture_heap_ = textures; sampler_heap_ = samplers;
-            textures_ = samplers_ = 0u;
-        }
-    }
-    void set_tables(Table textures, Table samplers) noexcept {
+    // Every texture and every sampler (the heaps' starts; the heaps themselves are the caller's, DescriptorRing::bind) and
+    // the frame's texture lists: bound once per list, read through each draw's DrawRoot::table.
+    void set_texture_arrays(Table textures, Table samplers, Address lists) noexcept {
         if (textures.ptr != textures_) {
             list_->SetGraphicsRootDescriptorTable(4u, textures);
             textures_ = textures.ptr;
@@ -110,6 +107,10 @@ public:
         if (samplers.ptr != samplers_) {
             list_->SetGraphicsRootDescriptorTable(5u, samplers);
             samplers_ = samplers.ptr;
+        }
+        if (lists != lists_) {
+            list_->SetGraphicsRootShaderResourceView(8u, lists);
+            lists_ = lists;
         }
     }
     void set_rows(Address rows, Address instances) noexcept {
@@ -172,11 +173,9 @@ private:
             topology_set_ = true;
         }
     }
-    ID3D12DescriptorHeap* texture_heap_ = nullptr;
-    ID3D12DescriptorHeap* sampler_heap_ = nullptr;
     ID3D12GraphicsCommandList* list_ = nullptr;
     Pipeline* pipeline_ = nullptr;
-    Address view_ = 0u, vertex_rows_ = 0u, pixel_rows_ = 0u, rows_ = 0u, instances_ = 0u;
+    Address view_ = 0u, vertex_rows_ = 0u, pixel_rows_ = 0u, rows_ = 0u, instances_ = 0u, lists_ = 0u;
     std::uint64_t textures_ = 0u, samplers_ = 0u;
     DrawRoot root_{};
     Rect scissor_{};
@@ -195,14 +194,15 @@ private:
 
 namespace galaxy::render::gpu {
 
-// Implemented over the renderer's draw layout (renderer_vk.cpp): set 0 the dynamic constants and row buffers, set 1 the
-// textures, set 2 the samplers, push constants b3. `Address` is the renderer's address space; `resolve` turns one into a
-// buffer and an offset.
+// Implemented over the renderer's draw layout (renderer_vk.cpp): set 0 the dynamic constants, the row buffers and (with
+// descriptor indexing) the frame's texture lists, set 1 the textures, set 2 the samplers (every one, or one draw's bound
+// table), push constants b3. `Address` is the renderer's address space; `resolve` turns one into a buffer and an offset.
 class Encoder {
 public:
     struct Layout {
         VkPipelineLayout layout = VK_NULL_HANDLE;
-        VkDescriptorSet (*constants_set)(void* renderer, const VkBuffer* buffers, Address rows, Address instances) = nullptr;
+        VkDescriptorSet (*constants_set)(void* renderer, const VkBuffer* buffers, Address rows, Address instances,
+                                         Address lists) = nullptr;
         void (*resolve)(void* renderer, Address address, VkBuffer& buffer, VkDeviceSize& offset) = nullptr;
         void* renderer = nullptr;
     };
@@ -217,8 +217,8 @@ public:
         pipeline_ = VK_NULL_HANDLE;
         set0_ = VK_NULL_HANDLE;
         offsets_valid_ = false;
-        view_ = vertex_rows_ = pixel_rows_ = 0u;
-        bound_view_ = bound_vertex_rows_ = bound_pixel_rows_ = bound_rows_ = bound_instances_ = 0u;
+        view_ = vertex_rows_ = pixel_rows_ = lists_ = 0u;
+        bound_view_ = bound_vertex_rows_ = bound_pixel_rows_ = bound_rows_ = bound_instances_ = bound_lists_ = 0u;
         view_buffer_ = vertex_buffer_ = pixel_buffer_ = VK_NULL_HANDLE;
         textures_ = samplers_ = 0u;
         root_valid_ = scissor_valid_ = viewport_valid_ = index_valid_ = false;
@@ -245,7 +245,7 @@ public:
     }
     void set_root(const DrawRoot& root) noexcept {
         if (!root_valid_ || root.first_instance != root_.first_instance || root.flags != root_.flags ||
-            root.half_line != root_.half_line || root.half_point != root_.half_point) {
+            root.half_line != root_.half_line || root.half_point != root_.half_point || root.table != root_.table) {
             vkCmdPushConstants(commands_, layout_.layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0u,
                                sizeof(DrawRoot), &root);
             root_ = root;
@@ -263,6 +263,13 @@ public:
             vkCmdBindDescriptorSets(commands_, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_.layout, 2u, 1u, &set, 0u, nullptr);
             samplers_ = samplers.ptr;
         }
+    }
+    // Every texture and every sampler (the bindless sets, bound once per list of bindings) and the frame's texture lists,
+    // read through each draw's DrawRoot::table (the lists join set 0).
+    void set_texture_arrays(Table textures, Table samplers, Address lists) noexcept {
+        set_tables(textures, samplers);
+        lists_ = lists;
+        offsets_valid_ = offsets_valid_ && lists == bound_lists_;
     }
     void set_rows(Address rows, Address instances) noexcept {
         rows_ = rows;
@@ -310,8 +317,9 @@ private:
     VkBuffer view_buffer_ = VK_NULL_HANDLE, vertex_buffer_ = VK_NULL_HANDLE, pixel_buffer_ = VK_NULL_HANDLE;
     std::array<std::uint32_t, 3> offsets_{};
     bool offsets_valid_ = false;
-    Address view_ = 0u, vertex_rows_ = 0u, pixel_rows_ = 0u, rows_ = 0u, instances_ = 0u;
-    Address bound_view_ = 0u, bound_vertex_rows_ = 0u, bound_pixel_rows_ = 0u, bound_rows_ = 0u, bound_instances_ = 0u;
+    Address view_ = 0u, vertex_rows_ = 0u, pixel_rows_ = 0u, rows_ = 0u, instances_ = 0u, lists_ = 0u;
+    Address bound_view_ = 0u, bound_vertex_rows_ = 0u, bound_pixel_rows_ = 0u, bound_rows_ = 0u, bound_instances_ = 0u,
+            bound_lists_ = 0u;
     std::uint64_t textures_ = 0u, samplers_ = 0u;
     DrawRoot root_{};
     Rect scissor_{};

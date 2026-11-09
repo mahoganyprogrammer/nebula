@@ -1,6 +1,6 @@
 #include "Game/Camera/CameraCharmedTripodBoss.hpp"
 #include "Game/Boss/TripodBossAccesser.hpp"
-#include "Game/Camera/CamTranslatorCharmedTripodBoss.hpp"
+#include "Game/Camera/CameraParamChunk.hpp"
 #include "Game/Camera/CameraLocalUtil.hpp"
 #include "Game/Camera/CameraTargetObj.hpp"
 #include "Game/Util/MathUtil.hpp"
@@ -18,7 +18,7 @@ void CameraCharmedTripodBoss::reset() {
 CameraTargetObj* CameraCharmedTripodBoss::calc() {
     CameraTargetObj* obj = CameraLocalUtil::getTarget(this);
     Vec3f watchPos;
-    CameraLocalUtil::makeWatchPoint(&watchPos, this, CameraLocalUtil::getTarget(this), 0.1f / 15.0f);
+    CameraLocalUtil::makeWatchPoint(&watchPos, this, obj, 0.1f / 15.0f);
 
     Vec3f up = mUp;
     Vec3f jointPos(0.0f, 0.0f, 0.0f);
@@ -38,7 +38,7 @@ CameraTargetObj* CameraCharmedTripodBoss::calc() {
     Pos3f rotMtx;
     rotMtx.concat(rotY, rotX);
 
-    Vec3f front = CameraLocalUtil::getTarget(this)->getPosition() - jointPos;
+    Vec3f front = obj->getPosition() - jointPos;
     if (MR::isNearZero(front)) {
         return obj;
     }
@@ -54,9 +54,8 @@ CameraTargetObj* CameraCharmedTripodBoss::calc() {
     MR::normalize(&front);
 
     Pos3f mtx;
-    mtx.identity();
     mtx.setXYZDir(side, up, front);
-    mtx.setTrans(CameraLocalUtil::getTarget(this)->getPosition());
+    mtx.setTrans(obj->getPosition());
     mtx.concat(mtx, rotMtx);
     mtx.getZDir(front);
     mtx.getYDir(up);
@@ -81,6 +80,7 @@ void CameraCharmedTripodBoss::setParam(s32 jointID, Vec3f up, const Vec3f& wPoin
     mJointId = jointID;
 }
 
-CamTranslatorBase* CameraCharmedTripodBoss::createTranslator() {
-    return new CamTranslatorCharmedTripodBoss(this);
+void CameraCharmedTripodBoss::setParamFromChunk(const CameraParamChunk* pChunk) {
+    CameraGeneralParam* general = pChunk->mGeneralParam;
+    setParam(general->mNum1, CameraLocalUtil::getNormalizedOr(general->mUp, Vec3f(0.0f, 1.0f, 0.0f)), general->mWPoint, Vec2f(general->mAxis.x, general->mAxis.y));
 }

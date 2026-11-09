@@ -1,21 +1,22 @@
 #include "Game/Sound/SequenceManager.hpp"
 #include "Game/Sound/SequenceSound.hpp"
 #include "Game/Sound/SoundHandles.hpp"
-#include "Game/Sound/SoundInfo.hpp"
+#include "Game/Sound/SoundMemory.hpp"
+#include "Game/Sound/StdSoundInfo.hpp"
+#include "Game/System/NebulaArena.hpp"
 
 SequenceManager::SequenceManager(bool setInstance) : SoundGlobal< SequenceManager >(setInstance), mAudience() {
     seqDataMgr = nullptr;
-    soundStrategyMgr = nullptr;
     mNumTracks = 16;
     mMove.init();
     mSoundActivity.init();
 }
 
 void SequenceManager::freeDeadSeq_() {
-    JSULink< SequenceSound >* i = mSeqList.getFirst();
+    NebulaListLink< SequenceSound >* i = mSeqList.getFirst();
     while (i != nullptr) {
         SequenceSound* seq = i->getObject();
-        JSULink< SequenceSound >* next = i->getNext();
+        NebulaListLink< SequenceSound >* next = i->getNext();
         if (seq->isDead()) {
             mSeqList.remove(i);
             delete seq;
@@ -29,8 +30,6 @@ bool SequenceManager::startSound(SoundID id, SoundHandle* handle, const Vec3f* p
         (*handle)->stop();
     }
 
-    SoundInfo* soundInfo = SoundGlobal< SoundInfo >::getInstance();
-    int category = (soundInfo != nullptr) ? soundInfo->getCategory(id) : -1;
     SeqData seqData;
     if (!seqDataMgr->getSeqData(id, &seqData)) {
         return false;
@@ -38,11 +37,9 @@ bool SequenceManager::startSound(SoundID id, SoundHandle* handle, const Vec3f* p
 
     SequenceSound* seq = beginStartSeq_();
     if (seq != nullptr) {
-        seq->startID_(id, posPtr, mAudience, category, mNumTracks, seqData);
+        seq->startID_(id, posPtr, mAudience, id.getGroupID(), mNumTracks, seqData);
         if (endStartSeq_(seq, handle)) {
-            if (soundInfo != nullptr) {
-                soundInfo->getSeqInfo(id, seq);
-            }
+            StdSoundInfo::getInstance()->applySound(id, seq);
             return true;
         }
     }
@@ -53,7 +50,7 @@ bool SequenceManager::startSound(SoundID id, SoundHandle* handle, const Vec3f* p
 void SequenceManager::calc() {
     mMove.calc();
 
-    JSULink< SequenceSound >* i;
+    NebulaListLink< SequenceSound >* i;
     for (i = mSeqList.getFirst(); i != mSeqList.getEnd(); i = i->getNext()) {
         i->getObject()->managerCalc_();
     }
@@ -61,14 +58,14 @@ void SequenceManager::calc() {
 }
 
 void SequenceManager::stop() {
-    JSULink< SequenceSound >* i;
+    NebulaListLink< SequenceSound >* i;
     for (i = mSeqList.getFirst(); i != mSeqList.getEnd(); i = i->getNext()) {
         i->getObject()->stop();
     }
 }
 
 void SequenceManager::stop(u32 fadeTime) {
-    JSULink< SequenceSound >* i;
+    NebulaListLink< SequenceSound >* i;
     for (i = mSeqList.getFirst(); i != mSeqList.getEnd(); i = i->getNext()) {
         i->getObject()->stop(fadeTime);
     }
@@ -76,7 +73,7 @@ void SequenceManager::stop(u32 fadeTime) {
 
 void SequenceManager::stopSoundID(SoundID id) {
     if (!id.isAnonymous()) {
-        JSULink< SequenceSound >* i;
+        NebulaListLink< SequenceSound >* i;
         for (i = mSeqList.getFirst(); i != mSeqList.getEnd(); i = i->getNext()) {
             if ((u32)i->getObject()->getID() == (u32)id) {
                 i->getObject()->stop();
@@ -86,14 +83,14 @@ void SequenceManager::stopSoundID(SoundID id) {
 }
 
 void SequenceManager::mixOut() {
-    JSULink< SequenceSound >* i;
+    NebulaListLink< SequenceSound >* i;
     for (i = mSeqList.getFirst(); i != mSeqList.getEnd(); i = i->getNext()) {
         i->getObject()->managerMixOut_(mMove.mParams, mSoundActivity);
     }
 }
 
 SequenceSound* SequenceManager::beginStartSeq_() {
-    SequenceSound* seq = new SequenceSound(this, soundStrategyMgr);
+    SequenceSound* seq = new (SoundMemory::arena(), 0) SequenceSound(this);
     return seq;
 }
 

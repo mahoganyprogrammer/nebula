@@ -11,6 +11,7 @@ struct MaterialConstants {
     float4 params;     // x: 1 an intensity font; y: the sheet's distance range in texels, 0 a picture
 };
 
+#define NATIVE_COORDS 1
 #include "native_material.hlsli"
 
 #if !NATIVE_OWN_VERTEX
@@ -21,11 +22,11 @@ void material_vertex(NativeVertex v, inout NativeVaryings o) {
 #endif
 
 float4 material_color(NativeVaryings i) {
-    float4 t = tex[0].Sample(samp[0], i.uv[0].xy);
+    float4 t = TEX(0).Sample(SAMP(0), i.uv[0].xy);
     if (material.params.y != 0.0) {
         // Distance in texels, then in screen pixels (texels a pixel along the sheet's steeper axis), as coverage.
         float2 sheet;
-        tex[0].GetDimensions(sheet.x, sheet.y);
+        TEX(0).GetDimensions(sheet.x, sheet.y);
         const float2 step = fwidth(i.uv[0].xy * sheet);
         const float texels = max(max(step.x, step.y), 0.0625);
         t = saturate((t - 0.5) * (material.params.y / texels) + 0.5);

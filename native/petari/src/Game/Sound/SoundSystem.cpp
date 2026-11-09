@@ -7,24 +7,17 @@ namespace {
     u32 sOutputMode = ~0u;
 
     SoundCommand& next(u16 kind) {
-        SoundCommand& rCommand = SoundEngine::get()->ring().next();
-        rCommand.mKind = kind;
-        rCommand.mArg = 0;
-        rCommand.mValue = 0;
-        rCommand.mTarget = nullptr;
-        return rCommand;
+        return SoundEngine::get()->ring().next(kind, nullptr);
     }
 
     u64 send() {
-        SoundRing& rRing = SoundEngine::get()->ring();
-        rRing.send();
-        return rRing.sent();
+        return SoundEngine::get()->ring().send();
     }
 }  // namespace
 
-void SoundSystem::create(NebulaArena* pHeap, f32 outputLevel) {
-    SoundMemory::setHeap(pHeap);
-    SoundEngine::create(pHeap);
+void SoundSystem::create(NebulaArena* pArena, f32 outputLevel) {
+    SoundMemory::setArena(pArena);
+    SoundEngine::create(pArena);
     next(SOUND_OUTPUT_LEVEL).payload< f32 >() = outputLevel;
     send();
 }

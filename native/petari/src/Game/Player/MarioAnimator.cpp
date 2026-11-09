@@ -19,7 +19,6 @@
 #include "Game/Util/MtxUtil.hpp"
 #include "Game/Util/StringUtil.hpp"
 #include <nebula_geometry.hpp>
-#include <cstring>
 
 MarioAnimator::MarioAnimator(MarioActor* pActor) : MarioModule(pActor) {
     init();
@@ -381,7 +380,7 @@ notSquat:
         goto doBrake;
     }
 
-    if (isAnimationRun("壁押し", 0)) {
+    if (isAnimationRun("壁押し", MarioIndexedAnime_WallPush)) {
         player = getPlayer();
         player->decideWalkSpeed();
         player = getPlayer();
@@ -422,7 +421,7 @@ afterBrake:
         setHipSliderTilt();
     }
 
-    if (isAnimationRun("坂すべり下向きあおむけ", 3)) {
+    if (isAnimationRun("坂すべり下向きあおむけ", MarioIndexedAnime_SlideDownFaceUp)) {
         setHipSlipTilt();
     }
 
@@ -462,7 +461,7 @@ void MarioAnimator::updateWalkBas(const char* pAnimName, f32 speed) {
         Mario* player = getPlayer();
         const char* currentBck = mXanimePlayer->getCurrentBckName();
 
-        if (strcmp(currentBck, player->mRunningBas) != 0) {
+        if (!MR::isEqualString(currentBck, player->mRunningBas)) {
             shouldStart = true;
             if (MR::strcasecmp("DamageWait", getPlayer()->mRunningBas) == 0) {
                 if (mActor->mHealth == 1) {
@@ -576,9 +575,9 @@ void MarioAnimator::setTilt() {
     Mario* player3 = getPlayer();
     f32 vertAngle = -player3->mSpinInertiaBlend;
     vertAngle *= PI;
-    f32 f4 = 0.9f * mTiltDown + 0.1f * lookDown;
-    f32 f5 = vertAngle / 4.0f;
-    mTiltDown = 0.97f * f4 + 0.03f * f5;
+    f32 eased = 0.9f * mTiltDown + 0.1f * lookDown;
+    f32 target = vertAngle / 4.0f;
+    mTiltDown = 0.97f * eased + 0.03f * target;
 
     Vec3f rotation(0.0f, mTiltSide, mTiltDown);
     MR::orderRotateMtx(0, rotation, mTiltMtx.toMtxPtr());
@@ -844,8 +843,8 @@ void MarioAnimator::change(const char* pName) {
     if (bck != nullptr) {
         const XanimeGroupInfo* info = mXanimePlayer->mCurrentAnimation;
         if (info->mAttribute == 2) {
-            f32 arg1 = info->mLoop, arg2 = info->mEnd;
-            getPlayer()->startBas(bck, false, arg1, arg2);
+            f32 loopFrame = info->mLoop, endFrame = info->mEnd;
+            getPlayer()->startBas(bck, false, loopFrame, endFrame);
         } else {
             getPlayer()->startBas(bck, false, 0.0f, 0.0f);
         }
@@ -896,7 +895,7 @@ void MarioAnimator::changeDefault(const char* pName) {
 }
 
 bool MarioAnimator::isDefaultAnimationRun(const char* pName) const {
-    return strcmp(mXanimePlayer->getDefaultAnimationName(), pName) == 0;
+    return MR::isEqualString(mXanimePlayer->getDefaultAnimationName(), pName);
 }
 
 void MarioAnimator::changeDefaultUpper(const char* pName) {
@@ -1073,7 +1072,6 @@ bool MarioAnimator::isMirrorAnimation() {
         return mMirror;
     }
 
-    // Check if walling (player mMovementStates._37 bit check)
     if (getPlayer()->mMovementStates.mode2D) {
         if (isAnimationRun("ブレーキ") || isAnimationRun("ターンブレーキ") || isAnimationRun("ターンジャンプ")) {
             if (!mMirrorChecked) {

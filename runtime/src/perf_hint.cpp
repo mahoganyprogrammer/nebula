@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "galaxy/perf_hint.h"
+#include "galaxy/game_step.h"
 
 #if !defined(_WIN32)
 #include <pthread.h>
@@ -50,7 +51,7 @@ struct Api {
     bool loaded = false;
 };
 
-constexpr std::int64_t kTargetNs = 1000000000ll / 60;
+constexpr std::int64_t kTargetNs = galaxy::kGameStepNs;
 
 Api g_api;
 bool g_api_tried = false;
@@ -119,7 +120,7 @@ void perf_hint_add_current_thread() noexcept {
 #endif
 }
 
-std::int64_t perf_hint_retrace() noexcept {
+std::int64_t perf_hint_frame_done() noexcept {
     std::lock_guard<std::mutex> lock(g_mutex);
     std::int64_t work = 0;
     for (FrameThread& thread : g_threads) {
@@ -141,7 +142,7 @@ std::int64_t perf_hint_retrace() noexcept {
 
 void perf_hint_add_current_thread() noexcept {}
 
-std::int64_t perf_hint_retrace() noexcept {
+std::int64_t perf_hint_frame_done() noexcept {
     return 0;
 }
 

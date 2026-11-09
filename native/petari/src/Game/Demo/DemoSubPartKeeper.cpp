@@ -1,6 +1,7 @@
 #include "Game/Demo/DemoSubPartKeeper.hpp"
 #include "Game/Demo/DemoFunction.hpp"
 #include "Game/Util.hpp"
+#include "Game/Util/StringUtil.hpp"
 #include <cstring>
 
 DemoSubPartKeeper::DemoSubPartKeeper(const DemoExecutor* pExecutor) : mExecutor(pExecutor), mNumSubPartInfos(), mSubPartInfos() {
@@ -20,15 +21,13 @@ DemoSubPartInfo::DemoSubPartInfo() : mSubPartName(nullptr), mSubPartTotalStep(1)
 }
 
 void DemoSubPartKeeper::update() {
-    if (mNumSubPartInfos > 0) {
-        for (int i = 0; i < mNumSubPartInfos; i++) {
-            DemoSubPartInfo* subpart = &mSubPartInfos[i];
-            if (subpart->mRestStep > 0) {
-                subpart->mRestStep -= 1;
-            }
-            if (MR::isDemoPartStep(subpart->mMainPartName, subpart->mMainPartStep)) {
-                subpart->mRestStep = subpart->mSubPartTotalStep;
-            }
+    for (int i = 0; i < mNumSubPartInfos; i++) {
+        DemoSubPartInfo* subpart = &mSubPartInfos[i];
+        if (subpart->mRestStep > 0) {
+            subpart->mRestStep -= 1;
+        }
+        if (MR::isDemoPartStep(subpart->mMainPartName, subpart->mMainPartStep)) {
+            subpart->mRestStep = subpart->mSubPartTotalStep;
         }
     }
 }
@@ -63,7 +62,7 @@ DemoSubPartInfo* DemoSubPartKeeper::findSubPart(const char* pSubPartName) const 
     s32 count = mNumSubPartInfos;
     for (int i = 0; i < count; i++) {
         subpart = &mSubPartInfos[i];
-        if (!strcmp(subpart->mSubPartName, pSubPartName)) {
+        if (MR::isEqualString(subpart->mSubPartName, pSubPartName)) {
             return subpart;
         }
     }

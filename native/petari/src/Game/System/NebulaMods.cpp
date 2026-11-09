@@ -1,4 +1,5 @@
 #include "Game/System/NebulaMods.hpp"
+#include "Game/System/NebulaFrameClock.hpp"
 #include "Game/Scene/SceneObjHolder.hpp"
 #include "Game/System/GalaxyInfoTable.hpp"
 #include "Game/System/GalaxyStatusAccessor.hpp"
@@ -42,6 +43,7 @@
 #include "Game/NameObj/NameObjFactory.hpp"
 #include "Game/Util/FileUtil.hpp"
 #include "Game/Util/Table.hpp"
+#include "Game/Util/StringUtil.hpp"
 #include "Game/AreaObj/AreaObj.hpp"
 #include "Game/LiveActor/HitSensorInfo.hpp"
 #include "Game/LiveActor/HitSensorKeeper.hpp"
@@ -149,7 +151,7 @@ namespace {
 
     const ObjectEntry* findObject(const char* pName) {
         for (int i = 0; i < sObjects.mCount; i++) {
-            if (strcmp(sObjects.mItems[i].mName, pName) == 0) {
+            if (MR::isEqualString(sObjects.mItems[i].mName, pName)) {
                 return &sObjects.mItems[i];
             }
         }
@@ -428,7 +430,7 @@ namespace {
 
     bool isGameSoundName(const char* pName) {
         for (const char* pPrefix : {"SE_", "BGM_", "MBGM_", "STM_", "ME_"}) {
-            if (strncmp(pName, pPrefix, strlen(pPrefix)) == 0) {
+            if (MR::isEqualStringPrefix(pName, pPrefix)) {
                 return true;
             }
         }
@@ -448,7 +450,7 @@ namespace {
         memcpy(pPath + 1, pFile + (rooted ? 1 : 0), stem - (rooted ? 1 : 0));
         memcpy(pPath + 1 + stem - (rooted ? 1 : 0), ".ast", 5);
         for (int i = 0; i < sTracks.mCount; i++) {
-            if (strcmp(sTracks.mItems[i].mName, pName) == 0) {
+            if (MR::isEqualString(sTracks.mItems[i].mName, pName)) {
                 sTracks.mItems[i].mFile = pPath;
                 return 0;
             }
@@ -533,7 +535,7 @@ namespace {
     }
 
     int32_t apiSetCometSchedule(int32_t dome, const char* const* ppGalaxies, const int32_t* pCoins, int32_t count) {
-        if (dome < 1 || dome > 16 || ppGalaxies == nullptr || pCoins == nullptr || count <= 0) {
+        if (dome < 1 || ppGalaxies == nullptr || pCoins == nullptr || count <= 0) {
             return -1;
         }
         GalaxyCometTimePaper* pPaper = new GalaxyCometTimePaper[count + 1];
@@ -621,18 +623,18 @@ namespace {
         if (pKey == nullptr || pValue == nullptr) {
             return -1;
         }
-        if (strcmp(pKey, "first_stage") == 0) {
+        if (MR::isEqualString(pKey, "first_stage")) {
             sFirstStage = copyText(pValue);
-        } else if (strcmp(pKey, "first_mission") == 0) {
+        } else if (MR::isEqualString(pKey, "first_mission")) {
             s32 mission = 0;
             for (const char* pAt = pValue; *pAt >= '0' && *pAt <= '9'; pAt++) {
                 mission = mission * 10 + (*pAt - '0');
             }
             sFirstMission = mission > 0 ? mission : 1;
-        } else if (strcmp(pKey, "hub") == 0) {
+        } else if (MR::isEqualString(pKey, "hub")) {
             sHubStage = copyText(pValue);
-        } else if (strcmp(pKey, "story_scenes") == 0) {
-            sNoStoryScenes = strcmp(pValue, "off") == 0;
+        } else if (MR::isEqualString(pKey, "story_scenes")) {
+            sNoStoryScenes = MR::isEqualString(pValue, "off");
         } else {
             return -1;
         }
@@ -645,8 +647,13 @@ namespace {
         }
     }
 
+    // A galaxy with scenario data (the game's or a mod's): one a stage change or the scenario select can open.
+    bool isGalaxy(const char* pGalaxy) {
+        return pGalaxy != nullptr && ScenarioDataFunction::getScenarioDataParser()->getScenarioData(pGalaxy) != nullptr;
+    }
+
     void apiOpenScenarioSelect(const char* pGalaxy) {
-        if (pGalaxy != nullptr && sStageFrames > 0) {
+        if (isGalaxy(pGalaxy) && sStageFrames > 0) {
             MR::requestStartScenarioSelect(copyText(pGalaxy));
         }
     }
@@ -1390,7 +1397,7 @@ namespace {
     }
 
     void apiChangeStage(const char* pGalaxy, int32_t mission) {
-        if (pGalaxy != nullptr && sStageFrames > 0) {
+        if (isGalaxy(pGalaxy) && sStageFrames > 0) {
             MR::requestChangeStageInGameMoving(copyText(pGalaxy), mission);
         }
     }
@@ -1399,6 +1406,11 @@ namespace {
         if (sStageFrames > 0) {
             MR::requestChangeStageGoBackAstroDome();
         }
+    }
+
+    // A mod's galaxy name: the game's spelling of a galaxy the save keeps stars for, or null.
+    const char* starGalaxy(const char* pGalaxy) {
+        return pGalaxy != nullptr ? GameDataFunction::findStarGalaxyName(pGalaxy) : nullptr;
     }
 
     int32_t apiIsEventFlagOn(const char* pName) {
@@ -1412,7 +1424,8 @@ namespace {
     }
 
     int32_t apiHasStar(const char* pGalaxy, int32_t star) {
-        return pGalaxy != nullptr && star > 0 && MR::isOnGameEventFlagPowerStarSuccess(pGalaxy, star) ? 1 : 0;
+        const char* pName = starGalaxy(pGalaxy);
+        return pName != nullptr && star > 0 && MR::isOnGameEventFlagPowerStarSuccess(pName, star) ? 1 : 0;
     }
 
     void apiShowMessage(const char* pText, int32_t centre) {
@@ -1508,7 +1521,7 @@ namespace {
         if (pName == nullptr) {
             return true;
         }
-        return strcmp(pActor->mName, pName) == 0 || strcmp(pActor->mName, MR::getJapaneseObjectName(pName)) == 0;
+        return MR::isEqualString(pActor->mName, pName) || MR::isEqualString(pActor->mName, MR::getJapaneseObjectName(pName));
     }
 
     NebulaActor* apiFindActor(const char* pName, NebulaActor* pAfter) {
@@ -1666,17 +1679,21 @@ namespace {
     }
 
     void apiSetStar(const char* pGalaxy, int32_t star, int32_t have) {
-        if (pGalaxy != nullptr && star > 0) {
-            GameDataFunction::setGameFlagPowerStarSuccess(pGalaxy, star, have != 0);
+        const char* pName = starGalaxy(pGalaxy);
+        if (pName != nullptr && star > 0) {
+            GameDataFunction::setGameFlagPowerStarSuccess(pName, star, have != 0);
         }
     }
 
     int32_t apiStarsInGalaxy(const char* pGalaxy) {
-        return pGalaxy != nullptr ? MR::makeGalaxyStatusAccessor(pGalaxy).getPowerStarNum() : 0;
+        const ScenarioData* pData =
+            pGalaxy != nullptr ? ScenarioDataFunction::getScenarioDataParser()->getScenarioData(pGalaxy) : nullptr;
+        return pData != nullptr ? pData->getPowerStarNum() : 0;
     }
 
     int32_t apiStarsWonInGalaxy(const char* pGalaxy) {
-        return pGalaxy != nullptr ? GameDataFunction::getPowerStarNumOwned(pGalaxy) : 0;
+        const char* pName = starGalaxy(pGalaxy);
+        return pName != nullptr ? GameDataFunction::getPowerStarNumOwned(pName) : 0;
     }
 
     // ---- layouts
@@ -1753,7 +1770,7 @@ namespace {
         }
         PluginLayout* pHost = asLayout(pLayout);
         for (int i = 0; i < pHost->mMoved.mCount; i++) {
-            if (strcmp(pHost->mMoved.mItems[i]->mPane, pPane) == 0) {
+            if (MR::isEqualString(pHost->mMoved.mItems[i]->mPane, pPane)) {
                 pHost->mMoved.mItems[i]->mAt.set(x, y);
                 return;
             }
@@ -1968,7 +1985,7 @@ namespace NebulaMods {
         for (int i = sCometLimits.mCount - 1; i >= 0; i--) {
             const CometLimit& rLimit = sCometLimits.mItems[i];
             if (rLimit.mMission == mission && MR::isEqualString(rLimit.mGalaxy, pGalaxy)) {
-                return rLimit.mSeconds * 60;
+                return NebulaFrameClock::stepsOfSeconds(rLimit.mSeconds);
             }
         }
         return 0;
@@ -2061,7 +2078,7 @@ namespace NebulaMods {
 
     const char16_t* text(const char* pId) {
         for (int i = sTexts.mCount - 1; i >= 0; i--) {
-            if (strcmp(sTexts.mItems[i].mId, pId) == 0) {
+            if (MR::isEqualString(sTexts.mItems[i].mId, pId)) {
                 return sTexts.mItems[i].mWords;
             }
         }
@@ -2070,7 +2087,7 @@ namespace NebulaMods {
 
     u32 trackId(const char* pName) {
         for (int i = 0; i < sTracks.mCount; i++) {
-            if (strcmp(sTracks.mItems[i].mName, pName) == 0) {
+            if (MR::isEqualString(sTracks.mItems[i].mName, pName)) {
                 return 0x02000000u | (cFirstTrackWave + static_cast< u32 >(i));
             }
         }
@@ -2086,7 +2103,7 @@ namespace NebulaMods {
         u32 forAll = static_cast< u32 >(-1);
         for (int i = sStageTracks.mCount - 1; i >= 0; i--) {
             const StageTrack& rRow = sStageTracks.mItems[i];
-            if (rRow.mScenario < 0 || strcmp(rRow.mStage, pStage) != 0) {
+            if (rRow.mScenario < 0 || !MR::isEqualString(rRow.mStage, pStage)) {
                 continue;
             }
             if (rRow.mScenario == scenario) {
@@ -2102,7 +2119,7 @@ namespace NebulaMods {
     u32 areaTrack(const char* pStage, s32 area) {
         for (int i = sStageTracks.mCount - 1; i >= 0; i--) {
             const StageTrack& rRow = sStageTracks.mItems[i];
-            if (rRow.mArea == area && strcmp(rRow.mStage, pStage) == 0) {
+            if (rRow.mArea == area && MR::isEqualString(rRow.mStage, pStage)) {
                 return rRow.mId;
             }
         }
@@ -2111,7 +2128,7 @@ namespace NebulaMods {
 
     bool mapSpot(const char* pGalaxy, f32* pX, f32* pY, s32* pDome) {
         for (int i = sMapSpots.mCount - 1; i >= 0; i--) {
-            if (strcmp(sMapSpots.mItems[i].mGalaxy, pGalaxy) == 0) {
+            if (MR::isEqualString(sMapSpots.mItems[i].mGalaxy, pGalaxy)) {
                 *pX = sMapSpots.mItems[i].mX;
                 *pY = sMapSpots.mItems[i].mY;
                 *pDome = sMapSpots.mItems[i].mDome;
@@ -2158,7 +2175,7 @@ namespace NebulaMods {
 
     u32 soundEffectSlow(const char* pName) {
         for (int i = sSoundEffects.mCount - 1; i >= 0; i--) {
-            if (strcmp(sSoundEffects.mItems[i].mName, pName) == 0) {
+            if (MR::isEqualString(sSoundEffects.mItems[i].mName, pName)) {
                 return sSoundEffects.mItems[i].mId;
             }
         }

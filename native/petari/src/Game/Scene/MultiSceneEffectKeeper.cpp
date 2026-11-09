@@ -7,9 +7,8 @@
 #include "Game/Util/HashUtil.hpp"
 #include "Game/Util/SystemUtil.hpp"
 #include <nebula_geometry.hpp>
-#include <algorithm>
 
-MultiSceneEffectKeeper::MultiSceneEffectKeeper(const char*, ModelManager* pModelManager, int extraEmitterNum, const char* pResName)
+MultiSceneEffectKeeper::MultiSceneEffectKeeper(ModelManager* pModelManager, int extraEmitterNum, const char* pResName)
     : mEmitter(), mResName(pResName) {
     if (mResName == nullptr) {
         mResName = pModelManager->getModelResourceHolder()->getModelName();
@@ -71,12 +70,11 @@ MultiEmitter* MultiSceneEffectKeeper::find(const char* pName) const {
         return nullptr;
     }
 
-    u16 hash = MR::getHashCode(pName);
-    MultiEmitter* const* pEmitter =
-        std::find_if(mEmitter.begin(), mEmitter.end(), [&](const auto& item) { return item->isEqualName(hash); });
-
-    if (pEmitter != mEmitter.end()) {
-        return *pEmitter;
+    const u32 hash = MR::getHashCode(pName);
+    for (MultiEmitter* const* pEmitter = mEmitter.begin(); pEmitter != mEmitter.end(); pEmitter++) {
+        if ((*pEmitter)->isEqualName(pName, hash)) {
+            return *pEmitter;
+        }
     }
 
     return nullptr;

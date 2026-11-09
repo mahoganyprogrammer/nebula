@@ -3,12 +3,11 @@
 class TypedDraw;
 #include "Game/Util/Array.hpp"
 #include "Game/LiveActor/LiveActor.hpp"
-class JUTTexture;
+class GameTexture;
 class SnowFloor : public LiveActor {
 public:
     SnowFloor(const char*);
 
-    virtual ~SnowFloor();
     virtual void init(const TableIter&) override;
     virtual void draw() const override;
     virtual void control() override;
@@ -37,7 +36,7 @@ public:
     Vec3f* mDirections;
     u16 mDirtyFrames;
     u8* mImage;
-    JUTTexture* mTexture;
+    GameTexture* mTexture;
     f32* mSnowDepth;
     u8* mBaseDepth;
     f32* mReduceMap;
@@ -47,6 +46,6 @@ public:
     u16 mResistFrames;
     u16 mCheckCount;
     MR::GrowTable< HitSensor*, 8 > mCheckList;
-    JUTTexture* mTextures[2];
+    GameTexture* mTextures[2];
     u8 mTextureIndex;
 };

@@ -8,6 +8,16 @@ class MarioAnimator;
 class MarioState;
 class Triangle;
 
+// Animations whose "running" state Mario tracks by flag (Mario::mIndexedAnimeOn).
+enum MarioIndexedAnime {
+    MarioIndexedAnime_WallPush,         // 壁押し
+    MarioIndexedAnime_WalkBrake,        // 歩行制動ブレーキ
+    MarioIndexedAnime_SlideUpFaceDown,  // 坂すべり上向きうつぶせ
+    MarioIndexedAnime_SlideDownFaceUp,  // 坂すべり下向きあおむけ
+    MarioIndexedAnime_DiveReady,        // 飛び込み準備
+    MarioIndexedAnime_Count
+};
+
 class MarioModule {
 public:
     inline MarioModule(MarioActor* pActor) : mActor(pActor) {
@@ -52,9 +62,9 @@ public:
     void stopAnimationUpper(const char*, const char* = nullptr);
     void stopAnimationUpperForce();
     f32 getAnimationFrame() const;
-    void changeAnimation(const char*, u32);
-    bool isAnimationRun(const char*, u32);
-    void stopAnimation(const char*, u32);
+    void changeAnimation(const char*, MarioIndexedAnime);
+    bool isAnimationRun(const char*, MarioIndexedAnime);
+    void stopAnimation(const char*, MarioIndexedAnime);
     void setJointGlobalMtx(u32, MtxPtr);
     void setYangleOffset(f32);
     bool isStickOn() const;
@@ -64,7 +74,7 @@ public:
     void addVelocityAfter(const Vec3f&);
     void clearVelocity();
     Vec3f& getVelocity() const;
-    void addTrans(const Vec3f&, const char*);
+    void addTrans(const Vec3f&);
     f32 cutGravityElementFromJumpVec(bool);
     f32 cutVecElementFromJumpVec(const Vec3f&);
     Vec3f& getJumpVec() const;
@@ -77,7 +87,7 @@ public:
     void playEffectSRT(const char*, f32, const Vec3f&, const Vec3f&);
     void stopEffect(const char*);
     void stopEffectForce(const char*);
-    void playSound(const char*, s32 a2 = -1);
+    void playSound(const char*, s32 timing = -1);
     void stopSound(const char*, u32);
     void startCamVib(u32);
     Vec3f& getCamPos() const;

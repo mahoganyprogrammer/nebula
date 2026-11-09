@@ -23,6 +23,7 @@
 #include "Game/Util/MapUtil.hpp"
 #include "Game/Util/MathUtil.hpp"
 #include "Game/Util/ModelUtil.hpp"
+#include "Game/Util/StringUtil.hpp"
 #include "Game/Util/MtxUtil.hpp"
 
 void MarioActor::init2D() {
@@ -245,12 +246,12 @@ const HitSensor* MarioActor::getCarrySensor() const {
 void MarioActor::changeSpecialModeAnimation(const char* pAnimName) {
     switch (mPlayerMode) {
     case 6:
-        if (!strcmp(pAnimName, "特殊ウエイト1A")) {
+        if (MR::isEqualString(pAnimName, "特殊ウエイト1A")) {
             changeTeresaAnimation("SleepStart", -1);
             return;
         }
 
-        if (strcmp(pAnimName, "特殊ウエイト1B")) {
+        if (!MR::isEqualString(pAnimName, "特殊ウエイト1B")) {
             return;
         }
 
@@ -466,8 +467,8 @@ void MarioActor::createIceFloor(const Vec3f& rVec) {
     createIceFloor(rVec, vec);
 }
 
-void MarioActor::createIceFloor(const Vec3f& rVec1, const Vec3f& rVec2) {
-    mIceSteps[mIceStepIndex]->setOn(mIceStepIndex, rVec1, rVec2);
+void MarioActor::createIceFloor(const Vec3f& rPos, const Vec3f& rRotation) {
+    mIceSteps[mIceStepIndex]->setOn(mIceStepIndex, rPos, rRotation);
 
     mIceStepIndex = (mIceStepIndex + 1) % 20;
 
@@ -476,18 +477,18 @@ void MarioActor::createIceFloor(const Vec3f& rVec1, const Vec3f& rVec2) {
     }
 }
 
-void MarioActor::createIceWall(const Vec3f& rVec1, const Vec3f& rVec2) {
+void MarioActor::createIceWall(const Vec3f& rPos, const Vec3f& rNormal) {
     Pos3f mtx;
     mtx.identity();
     Vec3f upVec;
     getUpVec(&upVec);
 
-    MR::makeMtxFrontUp(&mtx, getGravityVector(), rVec2);
+    MR::makeMtxFrontUp(&mtx, getGravityVector(), rNormal);
 
     Vec3f vec;
     mtx.getEuler(vec);
     vec *= 180.0f / PI;
-    mIceSteps[mIceStepIndex]->setOn(mIceStepIndex, rVec1, vec);
+    mIceSteps[mIceStepIndex]->setOn(mIceStepIndex, rPos, vec);
 
     mIceStepIndex = (mIceStepIndex + 1) % 20;
 

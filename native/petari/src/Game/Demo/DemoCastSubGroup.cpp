@@ -5,8 +5,7 @@
 #include "Game/Util/PlacementId.hpp"
 #include "Game/Util/Table.hpp"
 
-DemoCastSubGroup::DemoCastSubGroup(const char* pName) : DemoCastGroup(pName) {
-    mExecutor = nullptr;
+DemoCastSubGroup::DemoCastSubGroup(const char* pName) : DemoCastGroup(pName), mExecutor(nullptr) {
 }
 
 void DemoCastSubGroup::init(const TableIter& rIter) {
@@ -28,7 +27,4 @@ bool DemoCastSubGroup::tryRegisterDemoActor(LiveActor* pActor, const TableIter& 
 
     mExecutor->registerDemoActor(pActor, rIter);
     return true;
-}
-
-DemoCastSubGroup::~DemoCastSubGroup() {
 }

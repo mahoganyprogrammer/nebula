@@ -50,7 +50,7 @@ public:
     virtual bool isZeroFrameMoveOff() const {
         return true;
     }
-    virtual CamTranslatorBase* createTranslator();
+    virtual void setParamFromChunk(const CameraParamChunk*);
 
     void setParam(u8*, f32);
     bool isAnimEnd() const;
@@ -65,6 +65,5 @@ public:
     f32 mSpeed;
     f32 mCurrentFrame;
     const CamAnmHeader* mClip;
-    u8* mFileData;
     bool mIsPaused;
 };

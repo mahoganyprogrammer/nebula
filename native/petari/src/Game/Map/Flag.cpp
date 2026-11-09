@@ -15,7 +15,7 @@
 #include "Game/Util/SoundUtil.hpp"
 #include "Game/Util/StringUtil.hpp"
 #include <nebula_geometry.hpp>
-#include <JSystem/JUtility/JUTTexture.hpp>
+#include "Game/Render/GameTexture.hpp"
 
 namespace {
     static const f32 sDefaultPointIntervalU = 40.0f;
@@ -49,9 +49,6 @@ namespace {
 namespace {
     const NebulaColor8 sStickColors[] = {{0x00, 0xC8, 0x00, 0x00}, {0x00, 0xDC, 0x00, 0x00}, {0x00, 0xB4, 0x00, 0x00}, {0x00, 0xC8, 0x00, 0x00}};
 };  // namespace
-
-Flag::~Flag() {
-}
 
 Flag::Flag(const char* pName)
     : LiveActor(pName), mObjName(), mDisableLighting(), mNumPointsV(10), mNumPointsU(10), mPointIntervalU(::sDefaultPointIntervalU),
@@ -157,9 +154,9 @@ void Flag::init(const TableIter& rIter) {
     }
 
     if (mObjName != nullptr) {
-        mTexture = new JUTTexture(MR::loadTexFromArc(mObjName));
+        mTexture = new GameTexture(MR::loadTexFromArc(mObjName));
     } else {
-        mTexture = new JUTTexture(MR::loadTexFromArc("Flag", "Flag.bti"));
+        mTexture = new GameTexture(MR::loadTexFromArc("Flag", "Flag.bti"));
     }
 
     initSound(4, false);

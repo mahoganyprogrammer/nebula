@@ -1,13 +1,13 @@
 #include "Game/Sound/SoundObject.hpp"
 #include "Game/Sound/EffectManager.hpp"
 #include "Game/Sound/SoundHandles.hpp"
-#include "Game/Sound/SoundInfo.hpp"
+#include "Game/Sound/StdSoundInfo.hpp"
 #include "Game/Sound/SoundStarter.hpp"
 #include "Game/Sound/SoundGlobal.hpp"
 #include "Game/System/NebulaArena.hpp"
 
-SoundObject::SoundObject(Vec3f* pPos, u8 numHandles, NebulaArena* pHeap)
-    : SoundHandles(new(pHeap, 0) SoundHandle[numHandles], numHandles), mPos(pPos) {
+SoundObject::SoundObject(Vec3f* pPos, u8 numHandles, NebulaArena* pArena)
+    : SoundHandles(new(pArena, 0) SoundHandle[numHandles], numHandles), mPos(pPos) {
     mIsAllocated = true;
 }
 
@@ -19,18 +19,10 @@ SoundObject::~SoundObject() {
 void SoundObject::dispose() {
     for (u32 idx = 0; idx < mNumHandles; idx++) {
         if (mHandles[idx].isSoundAttached()) {
-            if (stopOK(mHandles[idx])) {
-                mHandles[idx].getSound()->stop();
-            } else {
-                mHandles[idx].releaseSound();
-            }
+            mHandles[idx].getSound()->stop();
         }
     }
     mIsAllocated = false;
-}
-
-bool SoundObject::stopOK(SoundHandle& rHandle) {
-    return true;
 }
 
 void SoundObject::process() {
@@ -131,7 +123,7 @@ void SoundObject::stopSound(SoundID soundID, u32 fadeTime) {
 
 SoundHandle* SoundObject::getLowPrioSound(SoundID soundID) {
     SoundHandle* handle;
-    SoundInfo* info = SoundGlobal< SoundInfo >::getInstance();
+    const StdSoundInfo* info = StdSoundInfo::getInstance();
     u32 lowPrio = 0xFFFF;
     SoundHandle* prioHandle = nullptr;
 

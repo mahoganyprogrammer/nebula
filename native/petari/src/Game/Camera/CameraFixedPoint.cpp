@@ -1,11 +1,11 @@
 #include "Game/Camera/CameraFixedPoint.hpp"
-#include "Game/Camera/CamTranslatorFixedPoint.hpp"
+#include "Game/Camera/CameraParamChunk.hpp"
 #include "Game/Camera/CameraLocalUtil.hpp"
 #include "Game/Camera/CameraTargetObj.hpp"
 #include "Game/Util/MathUtil.hpp"
 #include "Game/Util/PlayerUtil.hpp"
 
-CameraFixedPoint::CameraFixedPoint(const char* pName) : Camera(pName), mPos(0.0f, 0.0f, 0.0f) {
+CameraFixedPoint::CameraFixedPoint(const char* pName) : Camera(pName), mPos(0.0f, 0.0f, 0.0f), mCameraType(CameraType_ZoneUp) {
 }
 
 void CameraFixedPoint::reset() {
@@ -58,8 +58,9 @@ CameraTargetObj* CameraFixedPoint::calc() {
     return CameraLocalUtil::getTarget(this);
 }
 
-CamTranslatorBase* CameraFixedPoint::createTranslator() {
-    return new CamTranslatorFixedPoint(this);
+void CameraFixedPoint::setParamFromChunk(const CameraParamChunk* pChunk) {
+    CameraGeneralParam* general = pChunk->mGeneralParam;
+    setParam(general->mWPoint, general->mNum1);
 }
 
 void CameraFixedPoint::setParam(const Vec3f& rPos, u32 cameraType) {

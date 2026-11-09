@@ -10,7 +10,7 @@
 #include "Game/Sound/SoundAnimator.hpp"
 #include "Game/System/NebulaArena.hpp"
 
-AudAnmSoundObject::AudAnmSoundObject(Vec3f* pPos, u8 numHandles, NebulaArena* pHeap) : AudSoundObject(pPos, numHandles, pHeap), SoundAnimator(this) {
+AudAnmSoundObject::AudAnmSoundObject(Vec3f* pPos, u8 numHandles, NebulaArena* pArena) : AudSoundObject(pPos, numHandles, pArena), SoundAnimator(this) {
 }
 
 void AudAnmSoundObject::update(f32 time) {
@@ -19,13 +19,6 @@ void AudAnmSoundObject::update(f32 time) {
     }
 
     updateAnimSound(time, *mPos, nullptr);
-}
-
-void AudAnmSoundObject::modifySoundParams(SoundParams* pParams, const SoundAnimationSound* pSound, f32 speed) {
-    if (speed > 3.0f) {
-        speed = 3.0f;
-    }
-    SoundAnimator::modifySoundParams(pParams, pSound, speed);
 }
 
 bool AudAnmSoundObject::playsSound(const SoundAnimationSound* pSound, const Vec3f& rPos, f32 speed) {
@@ -103,15 +96,9 @@ void AudAnmSoundObject::skip(f32 time) {
 
     f32 speed = time - mLifeTime;
     if (!mIsReversed) {
+        // Past the loop's end: back to its start without sounding the rest.
         if (speed < 0.0f) {
             speed += mLoopEndFrame - mLoopStartFrame;
-            while (mLoopSoundIndex < mLoopEndSoundIndex) {
-                if (mIsReversed) {
-                    mLoopSoundIndex--;
-                } else {
-                    mLoopSoundIndex++;
-                }
-            }
             mLifeTime = time;
             mLoopSoundIndex = mLoopStartSoundIndex;
             if (mTime < 0xFFFF) {
@@ -120,22 +107,11 @@ void AudAnmSoundObject::skip(f32 time) {
         }
         updateSoundLifeTime_(time, speed);
         while (mLoopSoundIndex < mSoundAnimation->getNumSounds() && mSoundAnimation->getSound(mLoopSoundIndex)->isNotingOn(time, false)) {
-            if (mIsReversed) {
-                mLoopSoundIndex--;
-            } else {
-                mLoopSoundIndex++;
-            }
+            mLoopSoundIndex++;
         }
     } else {
         if (speed > 0.0f) {
             speed -= mLoopEndFrame - mLoopStartFrame;
-            while (mLoopSoundIndex >= mLoopStartSoundIndex) {
-                if (mIsReversed) {
-                    mLoopSoundIndex--;
-                } else {
-                    mLoopSoundIndex++;
-                }
-            }
             mLifeTime = time;
             mLoopSoundIndex = mLoopEndSoundIndex - 1;
             if (mTime < 0xFFFF) {
@@ -144,11 +120,7 @@ void AudAnmSoundObject::skip(f32 time) {
         }
         updateSoundLifeTime_(time, speed);
         while (mLoopSoundIndex >= 0 && mSoundAnimation->getSound(mLoopSoundIndex)->isNotingOn(time, true)) {
-            if (mIsReversed) {
-                mLoopSoundIndex--;
-            } else {
-                mLoopSoundIndex++;
-            }
+            mLoopSoundIndex--;
         }
     }
 

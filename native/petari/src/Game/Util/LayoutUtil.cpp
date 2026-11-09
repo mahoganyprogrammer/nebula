@@ -18,7 +18,7 @@
 #include "Game/Util/SingletonHolder.hpp"
 #include "Game/Util/StringUtil.hpp"
 #include "Game/Render/Clip.hpp"
-#include <JSystem/JUtility/JUTTexture.hpp>
+#include "Game/Render/GameTexture.hpp"
 #include <Game/Ui/Layout.hpp>
 #include <Game/Ui/Material.hpp>
 #include <Game/Ui/Picture.hpp>
@@ -190,14 +190,14 @@ void MR::setTextBoxMessageRecursive(LayoutActor* pActor, const char* pPaneName, 
 }
 
 void MR::setTextBoxFormatRecursive(LayoutActor* pActor, const char* pPaneName, const char16_t* pFormat, ...) {
-    char16_t message[256];
+    MR::Text16 message;
     va_list list;
 
     va_start(list, pFormat);
-    MR::formatTextV(message, ARRAY_SIZE(message), pFormat, list);
+    message.format(pFormat, list);
     va_end(list);
 
-    setTextBoxMessageRecursive(pActor, pPaneName, message);
+    setTextBoxMessageRecursive(pActor, pPaneName, message.c_str());
 }
 
 void MR::setTextBoxArgNumberRecursive(LayoutActor* pActor, const char* pPaneName, s32 number, s32 argIndex) {
@@ -241,17 +241,13 @@ void MR::setTextBoxHorizontalPositionCenterRecursive(LayoutActor* pActor, const 
 }
 
 void MR::updateClearTimeTextBox(LayoutActor* pActor, const char* pPaneName, u32 step) {
-    char16_t clearTimeText[16];
-
-    makeClearTimeString(clearTimeText, step);
-    setTextBoxMessageRecursive(pActor, pPaneName, clearTimeText);
+    Text16 text;
+    setTextBoxMessageRecursive(pActor, pPaneName, makeClearTimeString(text, step));
 }
 
 void MR::updateMinuteAndSecondTextBox(LayoutActor* pActor, const char* pPaneName, u32 step) {
-    char16_t minuteAndSecondText[16];
-
-    makeMinuteAndSecondString(minuteAndSecondText, step);
-    setTextBoxMessageRecursive(pActor, pPaneName, minuteAndSecondText);
+    Text16 text;
+    setTextBoxMessageRecursive(pActor, pPaneName, makeMinuteAndSecondString(text, step));
 }
 
 void MR::setTextBoxFontRecursive(LayoutActor* pActor, const char* pPaneName, Ui::Font* pFont) {
@@ -386,15 +382,15 @@ void MR::setLayoutScalePosAtPaneScaleTransIfExecCalcAnim(LayoutActor* pActor, co
 }
 
 Ui::TexMap* MR::createLytTexMap(const char* pArcName, const char* pTextureName) {
-    JUTTexture texture(loadTexFromArc(pArcName, pTextureName));
+    GameTexture texture(loadTexFromArc(pArcName, pTextureName));
 
-    return new Ui::TexMap(texture.getTexObj());
+    return new Ui::TexMap(texture.site());
 }
 
 Ui::TexMap* MR::createLytTexMap(ResTIMG* pImage) {
-    JUTTexture texture(pImage);
+    GameTexture texture(pImage);
 
-    return new Ui::TexMap(texture.getTexObj());
+    return new Ui::TexMap(texture.site());
 }
 
 Ui::TexMap* MR::getLytTexMap(LayoutActor* pActor, const char* pPaneName, u8 textureIndex) {

@@ -1,11 +1,8 @@
 #include "Game/Camera/CameraMtxRegParallel.hpp"
-#include "Game/Camera/CamTranslatorMtxRegParallel.hpp"
 #include "Game/Camera/CameraCalc.hpp"
 #include "Game/Camera/CameraLocalUtil.hpp"
+#include "Game/Camera/CameraParamChunk.hpp"
 #include "Game/Camera/CameraTargetObj.hpp"
-
-CameraMtxRegParallel::~CameraMtxRegParallel() {
-}
 
 CameraMtxRegParallel::CameraMtxRegParallel(const char* pName)
     : Camera(pName), mString(), mAngleX(), mAngleY(), mDist(1000.0f), mWPoint(0.0f, 0.0f, 0.0f) {
@@ -20,8 +17,9 @@ CameraTargetObj* CameraMtxRegParallel::calc() {
     return CameraLocalUtil::getTarget(this);
 }
 
-CamTranslatorBase* CameraMtxRegParallel::createTranslator() {
-    return new CamTranslatorMtxRegParallel(this);
+void CameraMtxRegParallel::setParamFromChunk(const CameraParamChunk* pChunk) {
+    CameraGeneralParam* general = pChunk->mGeneralParam;
+    setParam(general->mString.getCharPtr(), general->mDist, Vec2f(general->mAngleB, general->mAngleA), general->mWPoint);
 }
 
 void CameraMtxRegParallel::calcIdealPose() {
@@ -29,8 +27,9 @@ void CameraMtxRegParallel::calcIdealPose() {
         mDist = 300.0f;
     }
 
+    CameraTargetObj* target = CameraLocalUtil::getTarget(this);
     Vec3f watchPoint;
-    CameraLocalUtil::makeWatchPoint(&watchPoint, this, CameraLocalUtil::getTarget(this), 0.1f / 15.0f);
+    CameraLocalUtil::makeWatchPoint(&watchPoint, this, target, 0.1f / 15.0f);
 
     Pos3f mtx;
     mtx.set(CameraLocalUtil::getMtxReg(mString));
@@ -51,5 +50,5 @@ void CameraMtxRegParallel::calcIdealPose() {
     CameraLocalUtil::setWatchPos(this, watchPoint);
     CameraLocalUtil::setPos(this, pos);
     CameraLocalUtil::setUpVec(this, up);
-    CameraLocalUtil::setWatchUpVec(this, CameraLocalUtil::getTarget(this)->getUpVec());
+    CameraLocalUtil::setWatchUpVec(this, target->getUpVec());
 }

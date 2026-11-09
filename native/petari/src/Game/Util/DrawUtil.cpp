@@ -23,7 +23,7 @@ namespace {
     }
 };  // namespace
 
-const JUTTexture* mShadowTex;
+const GameTexture* mShadowTex;
 Vec3f mShadowVec;
 
 namespace MR {
@@ -85,13 +85,13 @@ namespace MR {
     }
 
     // runtime/src/render/materials/j2d_picture.hlsl: the texture over the screen.
-    void drawScreenPicture(const JUTTexture& rTexture) {
+    void drawScreenPicture(const GameTexture& rTexture) {
         SiteMaterial material;
         material.init(NEBULA_SHADER_J2D_PICTURE, SiteMaterial::BLEND_ALPHA, NEBULA_COMPARE_ALWAYS, false,
                            NEBULA_CULL_NONE);
         material.setColor(12, 255, 255, 255, 255);
         material.constants[16] = 1.0f;
-        material.constants[17] = rTexture.getTransparency() ? 1.0f : 0.0f;
+        material.constants[17] = rTexture.info()->mTransparency != 0 ? 1.0f : 0.0f;
         material.setTexture(0, &rTexture);
         const f32 width = getScreenWidth();
         const f32 height = ::getScreenHeightInline();
@@ -111,7 +111,7 @@ namespace MR {
         Frame::setOrthographic(projection);
     }
 
-    void setupDrawForNW4RLayout(f32 scale, bool) {
+    void setupDrawForLayout() {
         f32 height = MR::getScreenHeight();
         f32 width = NebulaFrameClock::cLayoutWidth;
         // The layout canvas widens with the picture; under 16:9 the layouts keep their width and gain height.
@@ -121,8 +121,6 @@ namespace MR {
         }
         f32 halfWidth = width / 2.0f;
         height *= 0.5f;
-        halfWidth *= scale;
-        height *= scale;
         Mtx44 projMtx;
         NebulaMtxOrtho(projMtx, height, -height, -halfWidth, halfWidth, -1000.0f, 1000.0f);
         Frame::setOrthographic(projMtx);
@@ -177,27 +175,18 @@ namespace MR {
         return material;
     }
 
-    void fillScreenArea(TypedDraw& rDraw, const Vec2s& rMin, const Vec2s& rMax) {
+    void fillScreenArea(TypedDraw& rDraw, const Vec2f& rMin, const Vec2f& rMax) {
         VertexP* vtx = rDraw.vertices< VertexP >(NEBULA_PRIMITIVE_QUADS, 4);
-        {
-            u16 maxX = rMax.x;
-            u16 minX = rMin.x;
-            u16 minY = rMin.y;
-            u16 maxY = rMax.y;
-
-            *vtx++ = {static_cast< f32 >(static_cast< u16 >(minX)), static_cast< f32 >(static_cast< u16 >(minY)), 0.0f};
-            *vtx++ = {static_cast< f32 >(static_cast< u16 >(maxX)), static_cast< f32 >(static_cast< u16 >(minY)), 0.0f};
-            *vtx++ = {static_cast< f32 >(static_cast< u16 >(maxX)), static_cast< f32 >(static_cast< u16 >(maxY)), 0.0f};
-            *vtx++ = {static_cast< f32 >(static_cast< u16 >(minX)), static_cast< f32 >(static_cast< u16 >(maxY)), 0.0f};
-        }
+        *vtx++ = {rMin.x, rMin.y, 0.0f};
+        *vtx++ = {rMax.x, rMin.y, 0.0f};
+        *vtx++ = {rMax.x, rMax.y, 0.0f};
+        *vtx++ = {rMin.x, rMax.y, 0.0f};
     }
 
     void fillScreen(const NebulaColor8& color, bool opaque) {
         const SiteMaterial material = fillScreenSetup(color, opaque);
         TypedDraw site = TypedDraw::eyeSpace(material, cIdentityMtx);
-        u16 width = getScreenWidth();
-        u16 height = getScreenHeight();
-        fillScreenArea(site, Vec2s(0, 0), Vec2s(width, height));
+        fillScreenArea(site, Vec2f(0.0f, 0.0f), Vec2f(getScreenWidth(), getScreenHeight()));
     }
 
     // The material of a shadow volume: a flat colour behind what is drawn, nothing but the stencil written.
@@ -236,11 +225,11 @@ namespace MR {
 
     }
 
-    const JUTTexture* getMarioShadowTex() {
+    const GameTexture* getMarioShadowTex() {
         return mShadowTex;
     }
 
-    const JUTTexture* getMarioShadowTexForLoad() {
+    const GameTexture* getMarioShadowTexForLoad() {
         return mShadowTex;
     }
 
@@ -248,7 +237,7 @@ namespace MR {
         return mShadowVec;
     }
 
-    void setMarioShadowTex(const JUTTexture* pShadowTex) {
+    void setMarioShadowTex(const GameTexture* pShadowTex) {
         mShadowTex = pShadowTex;
     }
 

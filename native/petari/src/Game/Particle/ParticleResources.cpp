@@ -8,6 +8,7 @@
 #include "Game/Particle/ParticleResource.hpp"
 #include "Game/Particle/ParticleShape.hpp"
 #include "Game/System/NebulaArena.hpp"
+#include "Game/Util/StringUtil.hpp"
 #include <cstring>
 
 ParticleResources::ParticleResources(void const* pFile, NebulaArena* pHeap) : mpHeap(pHeap) {
@@ -81,10 +82,10 @@ ParticleResources::ParticleResources(void const* pFile, NebulaArena* pHeap) : mp
 
 const ResTIMG* ParticleResources::swapTexture(ResTIMG const* img, char const* swapName) {
     for (u32 i = 0; i < mTexNum; i++) {
-        if (strcmp(swapName, mpTexArr[i]->getName()) == 0) {
-            JUTTexture* tex = mpTexArr[i]->getJUTTexture();
-            const ResTIMG* ret = tex->getTexInfo();
-            tex->storeTIMG(img);
+        if (MR::isEqualString(swapName, mpTexArr[i]->getName())) {
+            GameTexture* tex = mpTexArr[i]->getTexture();
+            const ResTIMG* ret = tex->info();
+            tex->set(img);
             return ret;
         }
     }

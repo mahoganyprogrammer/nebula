@@ -33,6 +33,15 @@ The base types are the same fundamental types on every host (`types.h`): `s32` i
 - Where code reads a bitfield's word, the declaration lists the fields from the least significant bit up, with explicit padding.
 - Saves are written in host order. An older save reads through `SaveBinary` and is written back in host order.
 
+## Cooked layouts (UiData, version 2)
+
+`NLYT` layouts and `NLAN` animations (`cook/ui_layout.rs`, `Game/Ui/UiData.hpp`) are flat records read in place; offsets count from the file's start.
+
+- A material is one fixed record (`UiMaterialData`, 296 bytes) in a run of `mMaterialCount`. Its maps, texture matrices, coordinate generators, indirect matrices and coordinate map are counted lists (`UiDataList`: a count and an offset, 0 for none), as are each of its four forms' rows, textures and inputs (`UiFormData`, 48 bytes). The cook writes every entry the source has, and nothing is rounded to a size.
+- `Ui::Material` sizes its storage from those counts, and the arrays a draw reads its values from come from the frame's memory, sized the same way. A picture draws with as many texture coordinates as its record names, the vertex stride and inputs following from the count.
+- `cUiDataVersion` is 2. A layout, or an animation, of another version is refused with a line in the log: the pak needs a new cook.
+- The renderer's per-draw texture table is the one fixed size left on this path: a form with more textures than `NEBULA_MATERIAL_SLOTS`, or more inputs than `NEBULA_LAYOUT_MAX_INPUTS`, draws nothing (`Ui::Material::Setup`) until the texture binding is replaced.
+
 ## Memory
 
 - The game's memory is arenas (`NebulaArena`): each has its own 4 GB of addresses from the host and commits memory as it grows, 1 MB at a time. No sizes are given, and only the machine's memory limits them.
@@ -51,7 +60,7 @@ The base types are the same fundamental types on every host (`types.h`): `s32` i
 - **Controls**: the game reads typed input samples (`input_read`, `NebulaInputSample`).
 - **HOME Menu**: the game's entry points open Nebula's panel over the frame.
 - **Power**: the game asks the host to close or start again (`app_exit`, `app_restart`).
-- **Movies**: the importer turns movies into frames the host decodes (`movie_video_decode`), with PCM16 sound.
+- **Movies**: the importer turns movies into JPEG frames (NMOV) the renderer decodes on a worker thread (`movie_playback`), with PCM16 sound.
 - **Display shape**: the host latches the output's shape once the frame is presented (`display_extent`), and the game draws for it: 4:3 to 32:9.
 - **Crash reports**: a fatal exception or the game's fatal call writes a minidump from a thread kept for it, and logs the module offset.
 - **Threads**: the game runs on one thread. The host's audio clock calls in on its own; the game reaches it only through the sound engine's one-way command ring (`Game/Sound/SoundRing`), and neither side takes a lock.

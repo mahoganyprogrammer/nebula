@@ -42,7 +42,7 @@ namespace {
 
 GalaxyMap::GalaxyMap()
     : LayoutActor("ギャラクシー・天文台マップ", true), mMarioIcon1(), mMarioIcon2(), mGalaxyPlain(), mGalaxyDetail(), mPointingIcon(), mGalaxyName(),
-      _70(), _71(true) {
+      mIsPointingNew(), mIsFocusEnabled(true) {
 }
 
 template <>
@@ -272,7 +272,7 @@ void GalaxyMap::setModeNormal() {
     }
     mTitle->setModeNormal();
 
-    _71 = true;
+    mIsFocusEnabled = true;
 }
 
 void GalaxyMap::setModeNewGalaxyDiscover() {
@@ -287,7 +287,7 @@ void GalaxyMap::setModeNewGalaxyDiscover() {
     }
     mTitle->setModeHideInformation();
 
-    _71 = false;
+    mIsFocusEnabled = false;
 }
 
 void GalaxyMap::setModeNewTicoGalaxyDiscover() {
@@ -302,7 +302,7 @@ void GalaxyMap::setModeNewTicoGalaxyDiscover() {
     }
     mTitle->setModeHideInformation();
 
-    _71 = false;
+    mIsFocusEnabled = false;
 }
 
 void GalaxyMap::setModeNewDomeDiscover() {
@@ -317,7 +317,7 @@ void GalaxyMap::setModeNewDomeDiscover() {
     }
     mTitle->setModeHideInformation();
 
-    _71 = false;
+    mIsFocusEnabled = false;
 }
 
 void GalaxyMap::setModeTicoCometPray() {
@@ -332,7 +332,7 @@ void GalaxyMap::setModeTicoCometPray() {
     }
     mTitle->setModeHideInformation();
 
-    _71 = false;
+    mIsFocusEnabled = false;
 }
 
 void GalaxyMap::setModeCapture() {
@@ -453,7 +453,7 @@ void GalaxyMap::exeFadeinAstroMap() {
 
 void GalaxyMap::exeShowDetail() {
     if (MR::isFirstStep(this)) {
-        mGalaxyDetail->startDisplay(mGalaxyName, _70);
+        mGalaxyDetail->startDisplay(mGalaxyName, mIsPointingNew);
         for (auto& item : mIcon) {
             item->deactivatePointing();
         }
@@ -502,9 +502,13 @@ void GalaxyMap::initPaneCtrlPointing() {
         if (!NebulaMods::mapSpot(pGalaxyName, &x, &y, &dome)) {
             continue;
         }
-        char parentName[16];
-        nebula_snprintf(parentName, sizeof(parentName), dome > 0 ? "Galaxy%d" : "Tico", dome);
-        Ui::Pane* pParent = getLayoutManager()->findPaneByName(parentName);
+        MR::FormattedName parentName;
+        if (dome > 0) {
+            parentName.format("Galaxy%d", dome);
+        } else {
+            parentName.format("Tico");
+        }
+        Ui::Pane* pParent = getLayoutManager()->findPaneByName(parentName.c_str());
         if (pParent == nullptr) {
             continue;
         }
@@ -606,20 +610,20 @@ void GalaxyMap::initMarioIcon() {
 
 void GalaxyMap::initTicoIcon() {
     GalaxyMapTicoIcon* ticoIcon;
-    char exclamationGalaxyName[16];
+    MR::FormattedName exclamationGalaxyName;
     s32 exclamationGalaxyNum = GameEventFlagTable::calcExclamationGalaxyNum();
 
     mTicoIcon.init(exclamationGalaxyNum);
 
     for (s32 i = 0; i < exclamationGalaxyNum; i++) {
-        nebula_snprintf(exclamationGalaxyName, sizeof(exclamationGalaxyName), "Tico%d", i + 1);
+        exclamationGalaxyName.format("Tico%d", i + 1);
 
         // A slot no Luma uses, or a Luma a mod added with no place on its map.
-        if (GameEventFlagTable::getExclamationGalaxyNameFromIndex(i) == nullptr || getLayoutManager()->findPaneByName(exclamationGalaxyName) == nullptr) {
+        if (GameEventFlagTable::getExclamationGalaxyNameFromIndex(i) == nullptr || getLayoutManager()->findPaneByName(exclamationGalaxyName.c_str()) == nullptr) {
             continue;
         }
 
-        ticoIcon = new GalaxyMapTicoIcon(i, GameEventFlagTable::getExclamationGalaxyNameFromIndex(i), this, exclamationGalaxyName);
+        ticoIcon = new GalaxyMapTicoIcon(i, GameEventFlagTable::getExclamationGalaxyNameFromIndex(i), this, exclamationGalaxyName.c_str());
         ticoIcon->initWithoutIter();
 
         mTicoIcon.push_back(ticoIcon);
@@ -627,7 +631,7 @@ void GalaxyMap::initTicoIcon() {
 }
 
 bool GalaxyMap::tryFocusIn() {
-    if (!_71) {
+    if (!mIsFocusEnabled) {
         mGalaxyName = nullptr;
         mPointingIcon = nullptr;
 
@@ -647,7 +651,7 @@ bool GalaxyMap::tryFocusIn() {
         }
 
         if (pointingGalaxyIcon != nullptr) {
-            _70 = pointingGalaxyIcon->isStatusNew();
+            mIsPointingNew = pointingGalaxyIcon->isStatusNew();
 
             MR::startSystemSE("SE_SY_GALAMAP_ICON_POINT");
         }

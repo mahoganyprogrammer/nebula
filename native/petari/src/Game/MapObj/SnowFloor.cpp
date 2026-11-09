@@ -5,9 +5,10 @@
 #include "Game/Render/FrameList.hpp"
 #include "Game/LiveActor/HitSensor.hpp"
 #include "Game/Util.hpp"
+#include "Game/Util/Array.hpp"
 #include "Game/Util/Color.hpp"
 #include "Game/Util/DirectDraw.hpp"
-#include <JSystem/JUtility/JUTTexture.hpp>
+#include "Game/Render/GameTexture.hpp"
 
 namespace {
     const u16 sTextureSize = 128;
@@ -39,9 +40,6 @@ namespace {
     const u16 sCellSize = 1024 / sTextureSize;
 }  // namespace
 
-SnowFloor::~SnowFloor() {
-}
-
 SnowFloor::SnowFloor(const char* pName) : LiveActor(pName) {
 }
 
@@ -61,11 +59,11 @@ void SnowFloor::init(const TableIter& rIter) {
 
     initLocalPoint(rIter);
     drawSetup();
-    mTextures[0] = new JUTTexture(::sTextureSize, ::sTextureSize);
-    mTextures[1] = new JUTTexture(::sTextureSize, ::sTextureSize);
+    mTextures[0] = new GameTexture(::sTextureSize, ::sTextureSize);
+    mTextures[1] = new GameTexture(::sTextureSize, ::sTextureSize);
     mTexture = mTextures[0];
     mTextureIndex = 0;
-    mImage = mTexture->mImage;
+    mImage = mTexture->image();
     mWalkingResist = 0.0f;
     mResistFrames = 0;
     mCheckCount = 0;
@@ -354,9 +352,9 @@ bool SnowFloor::doErase(const Vec3f& rPosition, f32 radius, f32 amount) {
 
 namespace {
     // Floors move on the game thread.
-    u16 sXs[4096];
-    u16 sYs[4096];
-    f32 sWeights[4096];
+    MR::GrowBuffer< u16 > sXs;
+    MR::GrowBuffer< u16 > sYs;
+    MR::GrowBuffer< f32 > sWeights;
 }  // namespace
 
 f32 SnowFloor::doMove(Vec2f from, Vec2f to, f32 radius, f32 amount) {
@@ -367,9 +365,6 @@ f32 SnowFloor::doMove(Vec2f from, Vec2f to, f32 radius, f32 amount) {
     u32 count = 0;
     Vec2f unitDirection(to - from);
     unitDirection.normalize();
-    u16* const xs = sXs;
-    u16* const ys = sYs;
-    f32* const weights = sWeights;
     f32 outerRadius = 1.732051f * radius;
     to.x *= ::sTextureSize;
     to.y *= ::sTextureSize;
@@ -381,6 +376,10 @@ f32 SnowFloor::doMove(Vec2f from, Vec2f to, f32 radius, f32 amount) {
     u32 minY = MR::clamp(top, 0, static_cast< s32 >(::sTextureSize));
     u32 maxX = MR::clamp(right, 0, static_cast< s32 >(::sTextureSize));
     u32 maxY = MR::clamp(bottom, 0, static_cast< s32 >(::sTextureSize));
+    const u32 room = (maxX - minX) * (maxY - minY);  // every cell of the box
+    u16* const xs = sXs.room(room);
+    u16* const ys = sYs.room(room);
+    f32* const weights = sWeights.room(room);
     f32 outerRadiusSq = outerRadius * outerRadius;
     f32 radiusSq = radius * radius;
 
@@ -469,7 +468,7 @@ void SnowFloor::doErase(Vec2f point, f32 radius, f32 amount) {
 void SnowFloor::createTexture() {
     mTextureIndex = 1 - mTextureIndex;
     mTexture = mTextures[mTextureIndex];
-    mImage = mTexture->mImage;
+    mImage = mTexture->image();
 
     if (mDirtyFrames != 0) {
         mDirtyFrames--;

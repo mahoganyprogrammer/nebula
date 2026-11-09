@@ -5,11 +5,9 @@
 class CameraTripodBoss : public CameraTower {
 public:
     CameraTripodBoss(const char* pName = "三脚ボスカメラ");
-    virtual ~CameraTripodBoss();
 
-    virtual CamTranslatorBase* createTranslator();
-
-    void arrangeRound();
+    virtual void setParamFromChunk(const CameraParamChunk*);
+    virtual void arrangeRound();
 
     f32 mAngleY;
 };

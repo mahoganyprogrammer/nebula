@@ -20,27 +20,36 @@ namespace LayoutCoreUtil {
     }
 
     u16 setTextBoxMessage(Ui::TextBox* pTextBox, const char16_t* pMsg) {
-        char16_t buffer[512];
+        char16_t stack[512];
+        MR::Text16 heap;
+        const u32 room = ReplaceTagProcessor::getReplaceRoom(pMsg);
+        char16_t* const buffer = room <= 512 ? stack : heap.room(room);
         ReplaceTagProcessor::Replace(buffer, pMsg);
-        return pTextBox->SetString(buffer, 0, MR::getStringLengthWithMessageTag(buffer));
+        const u16 length = MR::getStringLengthWithMessageTag(buffer);
+        // A box that has a string buffer holds whatever is set; its buffer grows to the text.
+        if (pTextBox->GetStringBufferLength() != 0 && length > pTextBox->GetStringBufferLength()) {
+            pTextBox->AllocStringBuffer(length);
+        }
+
+        return pTextBox->SetString(buffer, 0, length);
     }
 
     void initTextBoxPane(Ui::TextBox* pTextBox, const char* pMessageId, u32 allocSize) {
         CustomTagProcessor* processor = new CustomTagProcessor(pTextBox);
 
-        if (strncmp(pTextBox->mName, "Sha", 3) == 0) {
+        if (MR::isEqualStringPrefix(pTextBox->mName, "Sha")) {
             processor->mIsShadow = true;
         } else {
             processor->mIsShadow = false;
         }
 
-        if (strncmp(pTextBox->mName, "Txt", 3) == 0) {
+        if (MR::isEqualStringPrefix(pTextBox->mName, "Txt")) {
             processor->mIsText = true;
         } else {
             processor->mIsText = false;
         }
 
-        if (strncmp(pTextBox->mName, "Inf", 3) == 0) {
+        if (MR::isEqualStringPrefix(pTextBox->mName, "Inf")) {
             processor->mIsInfo = true;
         } else {
             processor->mIsInfo = false;
@@ -70,7 +79,7 @@ namespace LayoutCoreUtil {
 
 namespace MR {
     void convertScreenPosToLayoutPos(Vec2f* pLayoutPos, const Vec2f& rScreenPos) {
-        // The layout canvas setupDrawForNW4RLayout projects (pointer hit tests, panes following screen positions).
+        // The layout canvas setupDrawForLayout projects (pointer hit tests, panes following screen positions).
         if (MR::isScreen16Per9() && MR::getDisplay().wide) {
             const NebulaDisplay& display = MR::getDisplay();
             pLayoutPos->x = rScreenPos.x * display.layout_width / MR::getScreenWidth() - display.layout_width * 0.5f;

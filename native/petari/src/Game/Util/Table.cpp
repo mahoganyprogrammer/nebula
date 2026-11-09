@@ -1,11 +1,9 @@
 #include "Game/Util/Table.hpp"
+#include "Game/Util/HashUtil.hpp"
 #include "Game/Util/StringUtil.hpp"
-#include <JSystem/JGadget/hashcode.hpp>
 #include <cstring>
 
-Table::Table() {
-    mData = nullptr;
-    mName = "Undifined";
+Table::Table() : mData(nullptr), mName("Undifined") {
 }
 
 Table::~Table() {
@@ -38,7 +36,7 @@ s32 Table::searchItemInfo(const char* pKey) const {
     }
 
     const s32 nFields = getNumFields();
-    const u32 hash = JGadget::getHashCode(pKey);
+    const u32 hash = MR::getHashCode(pKey);
     const TableColumn* pColumns = mData->columns();
 
     for (int i = 0; i < nFields; ++i) {
@@ -55,19 +53,6 @@ s32 Table::getColumnKind(const char* pKey) const {
     return itemId < 0 ? -1 : mData->columns()[itemId].mKind;
 }
 
-TableIter MR::findTableElementNoCase(const Table* pInfo, const char* key, const char* searchValue, int startIndex) {
-    int entryIndex = startIndex;
-    const char* value;
-    while (entryIndex < pInfo->getNumEntries()) {
-        pInfo->getValue< const char* >(entryIndex, key, &value);
-        if (MR::isEqualStringCase(value, searchValue)) {
-            return TableIter(pInfo, entryIndex);
-        }
-        entryIndex++;
-    }
-    return pInfo->end();
-}
-
 TableIter Table::findElementBinary(const char* key, const char* value) const {
     int low = 0;
     int high = getNumEntries();
@@ -76,7 +61,13 @@ TableIter Table::findElementBinary(const char* key, const char* value) const {
     while (low < high) {
         int mid = (low + high) / 2;
         getValue< const char* >(mid, key, &nextVal);
-        int comparison = strcmp(nextVal, value);
+        const u8* pA = reinterpret_cast< const u8* >(nextVal);
+        const u8* pB = reinterpret_cast< const u8* >(value);
+        while (*pA != 0 && *pA == *pB) {
+            pA++;
+            pB++;
+        }
+        int comparison = static_cast< int >(*pA) - static_cast< int >(*pB);
         if (comparison == 0) {
             return TableIter(this, mid);
         } else if (comparison < 0) {

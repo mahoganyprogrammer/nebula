@@ -8,7 +8,7 @@
 #include "Game/System/GameSystem.hpp"
 #include "Game/System/GameSystemErrorWatcher.hpp"
 #include "Game/System/GameSystemObjHolder.hpp"
-#include "Game/System/GameSystemResetAndPowerProcess.hpp"
+#include "Game/System/GameSystemRestartProcess.hpp"
 #include "Game/System/GameSystemSceneController.hpp"
 #include "Game/System/SaveDataHandleSequence.hpp"
 #include "Game/System/PlayerInput.hpp"
@@ -79,23 +79,23 @@ namespace GameSystemFunction {
     }
 
     bool isResetProcessing() {
-        return SingletonHolder< GameSystemResetAndPowerProcess >::get()->isActive();
+        return SingletonHolder< GameSystemRestartProcess >::get()->isActive();
     }
 
     void setResetOperationApplicationReset() {
-        SingletonHolder< GameSystemResetAndPowerProcess >::get()->setResetOperationApplicationReset();
+        SingletonHolder< GameSystemRestartProcess >::get()->setResetOperationApplicationReset();
     }
 
     void setResetOperationQuit() {
-        SingletonHolder< GameSystemResetAndPowerProcess >::get()->setResetOperationQuit();
+        SingletonHolder< GameSystemRestartProcess >::get()->setResetOperationQuit();
     }
 
     void requestResetGameSystem(bool param1) {
-        SingletonHolder< GameSystemResetAndPowerProcess >::get()->requestReset(param1);
+        SingletonHolder< GameSystemRestartProcess >::get()->requestReset(param1);
     }
 
     void requestQuitGame(bool param1) {
-        SingletonHolder< GameSystemResetAndPowerProcess >::get()->requestQuitGame(param1);
+        SingletonHolder< GameSystemRestartProcess >::get()->requestQuitGame(param1);
     }
 
     void forceToDeactivateHomeButtonLayout() {
@@ -145,10 +145,6 @@ namespace GameSystemFunction {
             MR::getPlayerInput(chan)->mRumble->registInstance();
             MR::getPlayerInput(chan)->mRumble->stop();
         }
-    }
-
-    void setInputSleepTime(bool isLongAutoSleep) {
-        MR::setInputSleepTime(isLongAutoSleep);
     }
 
     bool setPermissionToCheckInput(bool permission) {
@@ -212,6 +208,6 @@ namespace GameSystemFunction {
     }
 
     bool isBeforeTitle() {
-        return MR::isEqualSceneName("Boot") && ::getBootScene() != nullptr && ::getBootScene()->isBeforeTitle();
+        return MR::isCurrentScene(SceneKind_Boot) &&::getBootScene() != nullptr && ::getBootScene()->isBeforeTitle();
     }
 };  // namespace GameSystemFunction

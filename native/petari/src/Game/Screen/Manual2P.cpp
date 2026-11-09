@@ -36,7 +36,7 @@ namespace {
 };  // namespace
 
 Manual2P::Manual2P(const char* pName)
-    : LayoutActor(pName, true), mPageIndex(), mPageNum(), mLeftPaneCtrl(), mRightPaneCtrl(), _30(true), _31(true), mBackButton() {
+    : LayoutActor(pName, true), mPageIndex(), mPageNum(), mLeftPaneCtrl(), mRightPaneCtrl(), mCanScrollLeft(true), mCanScrollRight(true), mBackButton() {
 }
 
 void Manual2P::init(const TableIter& rIter) {
@@ -45,12 +45,12 @@ void Manual2P::init(const TableIter& rIter) {
     MR::createAndAddPaneCtrl(this, "LeftButton", 2);
 
     mLeftPaneCtrl = new ButtonPaneController(this, "LeftButton", "PicLButton", 0, true);
-    mLeftPaneCtrl->_22 = 0;
+    mLeftPaneCtrl->mDisappearsAfterDecide = 0;
 
     MR::createAndAddPaneCtrl(this, "RightButton", 2);
 
     mRightPaneCtrl = new ButtonPaneController(this, "RightButton", "PicRButton", 0, true);
-    mRightPaneCtrl->_22 = 0;
+    mRightPaneCtrl->mDisappearsAfterDecide = 0;
 
     mBackButton = new BackButton("マニュアルの戻るボタン", true);
     mBackButton->initWithoutIter();
@@ -101,7 +101,7 @@ void Manual2P::exeWait() {
         MR::startAnim(this, "Wait", 0);
     }
 
-    if (_30) {
+    if (mCanScrollLeft) {
         mLeftPaneCtrl->trySelect();
 
         if (mLeftPaneCtrl->mIsSelected) {
@@ -111,7 +111,7 @@ void Manual2P::exeWait() {
         }
 
         if (MR::isMoveStickPressedLeft(PLAYER_1) || MR::isPressedLeft(PLAYER_1)) {
-            mLeftPaneCtrl->_24 = false;
+            mLeftPaneCtrl->mIsActive = false;
 
             MR::startSystemSE("SE_SY_FILE_SEL_TIPS_PAGE");
             setNerve(GET_NERVE_ANON(Manual2PNrvScrollLeft));
@@ -119,7 +119,7 @@ void Manual2P::exeWait() {
         }
     }
 
-    if (_31) {
+    if (mCanScrollRight) {
         mRightPaneCtrl->trySelect();
 
         if (mRightPaneCtrl->mIsSelected) {
@@ -129,7 +129,7 @@ void Manual2P::exeWait() {
         }
 
         if (MR::isMoveStickPressedRight(PLAYER_1) || MR::isPressedRight(PLAYER_1)) {
-            mRightPaneCtrl->_24 = false;
+            mRightPaneCtrl->mIsActive = false;
 
             MR::startSystemSE("SE_SY_FILE_SEL_TIPS_PAGE");
             setNerve(GET_NERVE_ANON(Manual2PNrvScrollRight));
@@ -162,7 +162,7 @@ void Manual2P::exeScrollRightAfter() {
     }
 
     if (MR::isAnimStopped(this, 0)) {
-        mRightPaneCtrl->_24 = true;
+        mRightPaneCtrl->mIsActive = true;
         mRightPaneCtrl->forceToWait();
         setNerve(GET_NERVE_ANON(Manual2PNrvWait));
     }
@@ -192,7 +192,7 @@ void Manual2P::exeScrollLeftAfter() {
     }
 
     if (MR::getAnimCtrl(this, 0)->getFrame() - MR::getAnimCtrl(this, 0)->getRate() <= 0.0f) {
-        mLeftPaneCtrl->_24 = true;
+        mLeftPaneCtrl->mIsActive = true;
         mLeftPaneCtrl->forceToWait();
         setNerve(GET_NERVE_ANON(Manual2PNrvWait));
     }
@@ -235,17 +235,16 @@ void Manual2P::reflectPageIndex() {
 
     MR::setAnimFrameAndStop(this, mPageIndex, 1);
 
-    char messageID[256];
-    nebula_snprintf(messageID, sizeof(messageID), "2PGuidance%03d", mPageIndex + 1);
+    MR::FormattedName messageID("2PGuidance%03d", mPageIndex + 1);
 
-    if (MR::isExistGameMessage(messageID)) {
-        MR::setTextBoxGameMessageRecursive(this, "Text", messageID);
+    if (MR::isExistGameMessage(messageID.c_str())) {
+        MR::setTextBoxGameMessageRecursive(this, "Text", messageID.c_str());
     }
 
-    nebula_snprintf(messageID, sizeof(messageID), "2PGuidanceTitle%03d", mPageIndex + 1);
+    messageID.format("2PGuidanceTitle%03d", mPageIndex + 1);
 
-    if (MR::isExistGameMessage(messageID)) {
-        MR::setTextBoxGameMessageRecursive(this, "Title", messageID);
+    if (MR::isExistGameMessage(messageID.c_str())) {
+        MR::setTextBoxGameMessageRecursive(this, "Title", messageID.c_str());
     }
 
     MR::setTextBoxFormatRecursive(this, "PageNumber", u"%d/%d", mPageIndex + 1, mPageNum);
@@ -254,24 +253,24 @@ void Manual2P::reflectPageIndex() {
         ButtonPaneController* pPaneCtrl = mLeftPaneCtrl;
         MR::startPaneAnim(this, pPaneCtrl->mPaneName, "ButtonOff", 1);
         MR::setPaneAnimFrameAndStop(this, pPaneCtrl->mPaneName, 1.0f, 1);
-        _30 = false;
+        mCanScrollLeft = false;
     } else {
         ButtonPaneController* pPaneCtrl = mLeftPaneCtrl;
         MR::startPaneAnim(this, pPaneCtrl->mPaneName, "ButtonOff", 1);
         MR::setPaneAnimFrameAndStop(this, pPaneCtrl->mPaneName, 0.0f, 1);
-        _30 = true;
+        mCanScrollLeft = true;
     }
 
     if (mPageIndex == (mPageNum - 1)) {
         ButtonPaneController* pPaneCtrl = mRightPaneCtrl;
         MR::startPaneAnim(this, pPaneCtrl->mPaneName, "ButtonOff", 1);
         MR::setPaneAnimFrameAndStop(this, pPaneCtrl->mPaneName, 1.0f, 1);
-        _31 = false;
+        mCanScrollRight = false;
     } else {
         ButtonPaneController* pPaneCtrl = mRightPaneCtrl;
         MR::startPaneAnim(this, pPaneCtrl->mPaneName, "ButtonOff", 1);
         MR::setPaneAnimFrameAndStop(this, pPaneCtrl->mPaneName, 0.0f, 1);
-        _31 = true;
+        mCanScrollRight = true;
     }
 }
 

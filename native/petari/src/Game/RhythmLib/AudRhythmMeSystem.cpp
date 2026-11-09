@@ -7,11 +7,8 @@
 
 namespace {
     SoundCommand& next(u16 kind, s32 parserNo) {
-        SoundCommand& rCommand = SoundEngine::get()->ring().next();
-        rCommand.mKind = kind;
-        rCommand.mArg = 0;
+        SoundCommand& rCommand = SoundEngine::get()->ring().next(kind, nullptr);
         rCommand.mValue = static_cast< u32 >(parserNo);
-        rCommand.mTarget = nullptr;
         return rCommand;
     }
 
@@ -20,14 +17,14 @@ namespace {
     }
 }  // namespace
 
-AudRhythmMeSystem::AudRhythmMeSystem(NebulaArena* pHeap, u32 numSeqParsers, bool hasMgr)
-    : SoundGlobal< AudRhythmMeSystem >(true), mNumSeqParsers(numSeqParsers), mBgmIdx(), mBeatTrack(), mMeMgr() {
+AudRhythmMeSystem::AudRhythmMeSystem(NebulaArena* pArena, u32 numSeqParsers, bool hasMgr)
+    : SoundGlobal< AudRhythmMeSystem >(true), mBgmIdx(), mBeatTrack(), mMeMgr() {
     if (numSeqParsers != 0) {
         setUsingRhythmParser(0);
     }
 
     if (hasMgr) {
-        mMeMgr = new (pHeap, 0) AudMeMgr(pHeap);
+        mMeMgr = new (pArena, 0) AudMeMgr(pArena);
     }
 }
 

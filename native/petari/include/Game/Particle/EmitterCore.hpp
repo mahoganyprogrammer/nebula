@@ -7,7 +7,6 @@
 #include "Game/Particle/ParticleMath.hpp"
 #include "Game/Particle/ParticleRandom.hpp"
 #include "Game/Particle/ParticleResource.hpp"
-#include "JSystem/JSupport/JSUList.hpp"
 #include <stdint.h>
 
 class ParticleResources;
@@ -75,7 +74,6 @@ enum {
 
 class EmitterCore {
 public:
-    ~EmitterCore();
     EmitterCore();
     void init(EmitterManager*, ParticleResource*, u32 seed);
     // Every slot free again (no live particles): the chunks back to the manager.
@@ -338,7 +336,9 @@ public:
     s16 mLifeTime;
     u16 mVolumeSize;
     u8 mRateStep;
-    JSULink< EmitterCore > mLink;
+    // Its neighbours in its group's list (EmitterManager); the next free one while it is free.
+    EmitterCore* mpPrevEmtr;
+    EmitterCore* mpNextEmtr;
     Mtx mGlobalRot;
     Vec3f mGlobalScl;
     Vec3f mGlobalTrs;
@@ -377,4 +377,3 @@ public:
 enum {
     ParticleStatus_Invisible = 0x08,
 };
-

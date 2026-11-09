@@ -1,6 +1,6 @@
 #include "Game/Util/SortUtil.hpp"
 #include "Game/System/ScenarioDataParser.hpp"
-#include "Game/System/GalaxyNameSortTable.hpp"
+#include "Game/System/GalaxyInfoTable.hpp"
 #include "Game/System/GalaxyStatusAccessor.hpp"
 #include "Game/System/GameSystem.hpp"
 #include "Game/System/GameSystemSceneController.hpp"
@@ -14,32 +14,12 @@
 #include <cstring>
 #include "Game/System/GameAssets.hpp"
 
-template const bool Table::getValue< s32 >(int, const char*, s32*) const;
-
 namespace {
-    inline const char* getGalaxyName(const ScenarioData* pData) {
-        return pData->mGalaxyName;
-    }
-
     struct GalaxyNameSortLt {
-        bool operator()(ScenarioData* pLhs, ScenarioData* pRhs) {
-            return static_cast< u32 >(GalaxyNameSortTable::getGalaxySortIndex(getGalaxyName(pLhs))) <
-                   static_cast< u32 >(GalaxyNameSortTable::getGalaxySortIndex(getGalaxyName(pRhs)));
+        bool operator()(const ScenarioData* pLhs, const ScenarioData* pRhs) const {
+            return pLhs->mSortKey < pRhs->mSortKey;
         }
     };
-
-    // FNV-1a over the name folded as MR::isEqualStringCase folds it (ASCII letters only).
-    u32 hashGalaxyName(const char* pName) {
-        u32 hash = 2166136261u;
-        for (; *pName != '\0'; pName++) {
-            u32 c = static_cast< u8 >(*pName);
-            if (c >= 'A' && c <= 'Z') {
-                c += 'a' - 'A';
-            }
-            hash = (hash ^ c) * 16777619u;
-        }
-        return hash;
-    }
 
     // A galaxy's scenario archive is named for it and ends in this.
     const char cScenarioSuffix[] = "Scenario";
@@ -48,7 +28,7 @@ namespace {
     u32 getGalaxyNameLength(const GameAssets::FolderEntry& rEntry) {
         const u32 suffixLength = sizeof(cScenarioSuffix) - 1;
         const u32 length = static_cast< u32 >(strlen(rEntry.mName));
-        if (!rEntry.mIsFolder || length <= suffixLength || strcmp(rEntry.mName + length - suffixLength, cScenarioSuffix) != 0) {
+        if (!rEntry.mIsFolder || length <= suffixLength || !MR::isEqualString(rEntry.mName + length - suffixLength, cScenarioSuffix)) {
             return 0;
         }
         return length - suffixLength;
@@ -101,12 +81,10 @@ s32 ScenarioData::getPowerStarNum() const {
 
 bool ScenarioData::getValueString(const char* pKey, s32 scenarioNo, const char** ppOut) const {
     TableIter iter = getScenarioDataIter(scenarioNo);
-    bool isExist = iter.getValue(pKey, ppOut);
-
-    if (isExist) {
-        if (MR::isEqualString(*ppOut, "")) {
-            *ppOut = nullptr;
-        }
+    const bool isExist = iter.getValue(pKey, ppOut);
+    // An empty string reads as no value.
+    if (isExist && MR::isEqualString(*ppOut, "")) {
+        *ppOut = nullptr;
     }
 
     return isExist;
@@ -120,8 +98,7 @@ const char* ScenarioData::getZoneName(s32 zoneId) const {
 }
 
 TableIter ScenarioData::getScenarioDataIter(s32 scenarioNo) const {
-    TableIter iter = mScenarioData->findElement< s32 >("ScenarioNo", scenarioNo, 0);
-    return iter;
+    return mScenarioData->findElement< s32 >("ScenarioNo", scenarioNo, 0);
 }
 
 bool ScenarioData::getValueU32(const char* pKey, s32 scenarioNo, u32* pOut) const {
@@ -179,6 +156,8 @@ ScenarioDataParser::ScenarioDataParser(const char* pName) : NameObj(pName) {
     }
     mScenarioData = new ScenarioData*[galaxyNum > 0 ? galaxyNum : 1];
 
+    Table galaxyInfo;
+    galaxyInfo.attach(NebulaDataTables::getGalaxyInfoTable());
     for (u32 i = 0; static_cast< u32 >(mScenarioDataNum) < galaxyNum && GameAssets::folderEntry("/StageData", i, &dirent); i++) {
         const u32 galaxyNameLength = getGalaxyNameLength(dirent);
         if (galaxyNameLength == 0) {
@@ -187,30 +166,18 @@ ScenarioDataParser::ScenarioDataParser(const char* pName) : NameObj(pName) {
 
         MR::FormattedName filePath;
         filePath.format("/StageData/%s", dirent.mName);
-        mScenarioData[mScenarioDataNum++] = new ScenarioData(dirent.mName, galaxyNameLength, filePath.c_str());
+        ScenarioData* const pData = new ScenarioData(dirent.mName, galaxyNameLength, filePath.c_str());
+        const TableIter row = galaxyInfo.findElement("name", static_cast< const char* >(pData->mGalaxyName), 0);
+        pData->mSortKey = row == galaxyInfo.end() ? 0xFFFFFFFFu : static_cast< u32 >(row.mIndex);
+        mScenarioData[mScenarioDataNum++] = pData;
     }
 
     MR::sort(mScenarioData, mScenarioData + mScenarioDataNum, GalaxyNameSortLt());
 
-    // The name index: the first galaxy of each name in sorted order, as a scan of the list finds it.
-    u32 slotNum = 4;
-    while (slotNum < static_cast< u32 >(mScenarioDataNum) * 2) {
-        slotNum <<= 1;
-    }
-    mNameSlots = new u32[slotNum];
-    mNameSlotMask = slotNum - 1;
-    for (u32 i = 0; i < slotNum; i++) {
-        mNameSlots[i] = cNoSlot;
-    }
+    // The first galaxy of each name in sorted order, as a scan of the list finds it.
+    mNames.reset(static_cast< u32 >(mScenarioDataNum));
     for (s32 i = 0; i < mScenarioDataNum; i++) {
-        const char* pGalaxyName = mScenarioData[i]->mGalaxyName;
-        u32 slot = hashGalaxyName(pGalaxyName) & mNameSlotMask;
-        while (mNameSlots[slot] != cNoSlot && !MR::isEqualStringCase(mScenarioData[mNameSlots[slot]]->mGalaxyName, pGalaxyName)) {
-            slot = (slot + 1) & mNameSlotMask;
-        }
-        if (mNameSlots[slot] == cNoSlot) {
-            mNameSlots[slot] = static_cast< u32 >(i);
-        }
+        mNames.add(mScenarioData[i]->mGalaxyName, static_cast< u32 >(i));
     }
 }
 
@@ -219,14 +186,8 @@ const ScenarioData* ScenarioDataParser::getScenarioData(const char* pGalaxyName)
         return nullptr;
     }
 
-    for (u32 slot = hashGalaxyName(pGalaxyName) & mNameSlotMask; mNameSlots[slot] != cNoSlot; slot = (slot + 1) & mNameSlotMask) {
-        const ScenarioData* pScenarioData = mScenarioData[mNameSlots[slot]];
-        if (MR::isEqualStringCase(pScenarioData->mGalaxyName, pGalaxyName)) {
-            return pScenarioData;
-        }
-    }
-
-    return nullptr;
+    const u32 index = mNames.find(pGalaxyName);
+    return index == MR::NameIndexOf< MR::NameKeyCase >::cNoValue ? nullptr : mScenarioData[index];
 }
 
 const ScenarioData* ScenarioDataParser::getScenarioData(s32 index) const {

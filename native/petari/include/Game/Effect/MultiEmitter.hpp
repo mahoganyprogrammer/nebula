@@ -38,7 +38,10 @@ public:
     void setOffset(const Vec3f&);
     void setBaseScale(f32);
     void setName(const char*);
+    // By the low 16 bits of the name's hash (PaneEffectKeeper, until it finds by name).
     bool isEqualName(u16) const;
+    // The name set, given its MR::getHashCode; an emitter never named matches nothing.
+    bool isEqualName(const char* pName, u32 hash) const;
 
     ParticleEmitter* getParticleEmitter(int) const;
     void create(EffectSystem*);
@@ -49,7 +52,7 @@ public:
     void forceScaleOn();
 
     void initSyncBck(XanimePlayer*, const char*, s32, f32);
-    void onDeleteSyncBck(bool, f32);
+    void onDeleteSyncBck(f32);
     void addSyncBck(const XanimePlayer*, const char*);
     void setContinueBckEnd(bool);
     void onCreateSyncClipping();
@@ -64,7 +67,7 @@ public:
     void setGlobalRotationDegree(const Vec3f&, s32);
 
     void allocateEmitter(const char*);
-    SingleEmitter* getValidEmitter(s32, bool);
+    SingleEmitter* getValidEmitter(s32);
     void createOneTimeEmitter();
     void createForeverEmitter();
 
@@ -88,31 +91,19 @@ public:
     // In MarioEffect
     void setGlobalScale(f32, s32);
 
-    inline bool isFlagOn(u16 flag) const {
-        u16 mask = mFlags & flag;
-        return mask == flag;
-    }
-
-    inline bool isFlagOff(u16 flag) const {
-        u16 mask = mFlags & flag;
-        return mask != flag;
-    }
-
-    inline void turnFlagOn(u16 flag) {
-        mFlags |= flag;
-    }
-
-    inline void turnFlagOff(u16 flag) {
-        mFlags &= ~flag;
-    }
+    // In MultiEmitterAccess (used only there)
+    template < typename F >
+    void forEachValid(s32 idx, const F& rApply);
 
     MR::AssignableArray< SingleEmitter > mEmitters;
-    MR::Vector< MR::FixedArray< MultiEmitter*, 4 > > mChildren;
+    MR::InlineVector< MultiEmitter*, 4 > mChildren;
     MultiEmitterCallBack* mCallBack;
     MultiEmitterParticleCallBack* mParticleCallBack;
     SyncBckEffectInfo* mSyncBck;
     const AutoEffectInfo* mAutoInfo;  // the effect's table row; none for effects made by code
     f32 mLightAffect;                 // near 0: the emitters keep their own colours
-    u16 mHash;
-    u8 mFlags;
+    u32 mHash;           // MR::getHashCode(mName); 0 while unnamed
+    const char* mName;   // setName's copy; null: unnamed
+    bool mCreateOnUnclipped;    // onCreateSyncClipping: made again when the actor comes back into view
+    bool mForceDeleteOnClipped;  // onForceDeleteSyncClipping: gone at once when the actor is clipped
 };

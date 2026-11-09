@@ -14,14 +14,14 @@
 #include "Game/Util/DrawUtil.hpp"
 #include "Game/Util/PlayerInputUtil.hpp"
 #include "Game/Util/LayoutUtil.hpp"
-#include "Game/Util/MemoryUtil.hpp"
+#include "Game/System/Arenas.hpp"
 #include "Game/Util/ObjUtil.hpp"
 #include "Game/Util/ScreenUtil.hpp"
 #include "Game/Util/SequenceUtil.hpp"
 #include "Game/Util/SoundUtil.hpp"
 #include "Game/Util/SystemUtil.hpp"
 #include "Game/System/NebulaArena.hpp"
-#include <JSystem/JUtility/JUTTexture.hpp>
+#include "Game/Render/GameTexture.hpp"
 #include <Game/Ui/DrawInfo.hpp>
 
 namespace {
@@ -64,7 +64,7 @@ namespace {
 };  // namespace
 
 GalaxyMapController::GalaxyMapController()
-    : LayoutActor("GalaxyMapController", true), mMap(), mMapBackground(), mPowerStarList(), mBackButton(), mWipe(), _38(), mMode(),
+    : LayoutActor("GalaxyMapController", true), mMap(), mMapBackground(), mPowerStarList(), mBackButton(), mWipe(), mCaptureTexture(), mMode(),
       mWipeFrame(::sMapFadeinoutFrame) {
 }
 
@@ -93,9 +93,9 @@ void GalaxyMapController::init(const TableIter& rIter) {
     mWipe->initWithoutIter();
 
     {
-        MR::CurrentHeapRestorer heapRestorer(MR::getSceneHeap());
+        NebulaArena::CurrentScope heapRestorer(Arenas::scene());
 
-        _38 = JUTTexture::createTarget(0.5f, 0.5f);
+        mCaptureTexture = GameTexture::createTarget(0.5f, 0.5f);
     }
 
     capture();
@@ -335,7 +335,7 @@ void GalaxyMapController::exeAppearGalaxyMap() {
 
 void GalaxyMapController::exeDisplayGalaxyMap() {
     if (MR::isFirstStep(this)) {
-        mMap->_71 = true;
+        mMap->mIsFocusEnabled = true;
     }
 
     if (!mMap->isShowDetail() && tryPushBackButton()) {
@@ -359,7 +359,7 @@ void GalaxyMapController::exeAppearAstroMap() {
 
 void GalaxyMapController::exeDisplayAstroMap() {
     if (MR::isFirstStep(this)) {
-        mMap->_71 = true;
+        mMap->mIsFocusEnabled = true;
     }
 
     if (!mMap->isShowDetail() && tryPushBackButton()) {
@@ -373,7 +373,7 @@ void GalaxyMapController::exeReadyPowerStarList() {
     if (MR::isFirstStep(this)) {
         mWipe->forceOpen();
         mWipe->wipe(::sMapFadeinoutFrame);
-        mMap->_71 = false;
+        mMap->mIsFocusEnabled = false;
 
         mMapSelectButton->changeToStarList();
     }
@@ -584,7 +584,7 @@ bool GalaxyMapController::tryAppearGalaxyMap() {
 
 bool GalaxyMapController::tryDisplayAndKeyWait() {
     if (MR::isFirstStep(this)) {
-        mMap->_71 = false;
+        mMap->mIsFocusEnabled = false;
     }
 
 
@@ -621,10 +621,10 @@ void GalaxyMapController::capture() {
     f32 halfHeight = MR::getScreenHeight() * 0.5f;
     f32 halfWidth = 304.0f;
     NebulaMtxOrtho(projectionMtx, halfHeight, -halfHeight, -halfWidth, halfWidth, -1000.0f, 1000.0f);
-    Frame::targetBegin(_38->mImage, _38->mShareAcross, _38->mShareDown, 0);
+    Frame::targetBegin(mCaptureTexture->image(), mCaptureTexture->shareAcross(), mCaptureTexture->shareDown(), 0);
     Frame::setOrthographic(projectionMtx);
     drawForCapture();
-    Frame::targetEnd(_38->mImage, NEBULA_TARGET_RGB);
+    Frame::targetEnd(mCaptureTexture->image(), NEBULA_TARGET_RGB);
 }
 
 namespace MR {
@@ -668,6 +668,6 @@ namespace MR {
     }
 
     const ResTIMG* getGalaxyMapResTIMG() {
-        return ::getGalaxyMapController()->_38->mTIMG;
+        return ::getGalaxyMapController()->mCaptureTexture->info();
     }
 };  // namespace MR

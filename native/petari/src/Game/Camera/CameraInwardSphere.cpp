@@ -1,5 +1,5 @@
 #include "Game/Camera/CameraInwardSphere.hpp"
-#include "Game/Camera/CamTranslatorInwardSphere.hpp"
+#include "Game/Camera/CameraParamChunk.hpp"
 #include "Game/Camera/CameraLocalUtil.hpp"
 #include "Game/Camera/CameraTargetObj.hpp"
 #include "Game/Map/HitInfo.hpp"
@@ -11,9 +11,6 @@
 namespace {
     static const f32 sBaseDist = 300.0f;
 };  // namespace
-
-CameraInwardSphere::~CameraInwardSphere() {
-}
 
 CameraInwardSphere::CameraInwardSphere(const char* pName)
     : Camera(pName), mDistMax(1500.0f), mDistMin(500.0f), mDistBase(::sBaseDist), mVelocity(0.0f, 0.0f, 0.0f), mPos(0.0f, 0.0f, 0.0f) {
@@ -105,8 +102,9 @@ CameraTargetObj* CameraInwardSphere::calc() {
     return CameraLocalUtil::getTarget(this);
 }
 
-CamTranslatorBase* CameraInwardSphere::createTranslator() {
-    return new CamTranslatorInwardSphere(this);
+void CameraInwardSphere::setParamFromChunk(const CameraParamChunk* pChunk) {
+    CameraGeneralParam* general = pChunk->mGeneralParam;
+    setParam(general->mAngleA, general->mDist, general->mAngleB);
 }
 
 void CameraInwardSphere::calcGravityCenter() {

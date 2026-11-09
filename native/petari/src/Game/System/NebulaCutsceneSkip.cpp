@@ -1,5 +1,5 @@
 #include "Game/System/NebulaCutsceneSkip.hpp"
-#include <JSystem/JUtility/JUTNativeLog.hpp>
+#include <nebula_module.h>
 
 #include "Game/AudioLib/AudSystem.hpp"
 #include "Game/AudioLib/AudWrap.hpp"
@@ -14,6 +14,7 @@
 #include "Game/System/GameSystem.hpp"
 #include "Game/System/GameSystemSceneController.hpp"
 #include "Game/System/NebulaText.hpp"
+#include "Game/Util/Array.hpp"
 #include "Game/Util/DemoUtil.hpp"
 #include "Game/Util/PlayerInputUtil.hpp"
 #include "Game/Util/PlacementId.hpp"
@@ -22,6 +23,7 @@
 #include "Game/Util/ScreenUtil.hpp"
 #include "Game/Util/SingletonHolder.hpp"
 #include "Game/Util/StarPointerUtil.hpp"
+#include "Game/Util/StringUtil.hpp"
 #include <cstring>
 #include "Game/System/NebulaClock.hpp"
 
@@ -89,7 +91,7 @@ namespace {
         }
         GameSystemSceneController* pController = pSystem->mSceneController;
         return pController->isExistSceneObjHolder() && pController->isSceneInitializeState(SceneInitializeState_End) &&
-               strcmp(pController->mCurrSceneControlInfo.mScene, "Game") == 0;
+               pController->mCurrSceneControlInfo.mScene == SceneKind_Game;
     }
 
     const DemoDirector* getActiveDemo() {
@@ -115,10 +117,10 @@ namespace {
             return false;
         }
         for (u32 i = 0; i < sizeof(cSkippableSheets) / sizeof(cSkippableSheets[0]); i++) {
-            if (strcmp(pSheet, cSkippableSheets[i]) != 0) {
+            if (!MR::isEqualString(pSheet, cSkippableSheets[i])) {
                 continue;
             }
-            if (strcmp(pSheet, "EscapeDriverApr") != 0) {
+            if (!MR::isEqualString(pSheet, "EscapeDriverApr")) {
                 return true;
             }
             // Its lesson (MarioLancherLecture3Zone), not a level's launch star appearing.
@@ -134,7 +136,7 @@ namespace {
             return false;
         }
         for (u32 i = 0; i < sizeof(cSkippableStarters) / sizeof(cSkippableStarters[0]); i++) {
-            if (strcmp(pStarter->mName, MR::getJapaneseObjectName(cSkippableStarters[i])) == 0) {
+            if (MR::isEqualString(pStarter->mName, MR::getJapaneseObjectName(cSkippableStarters[i]))) {
                 return true;
             }
         }
@@ -163,7 +165,7 @@ namespace {
         const bool isScene = isGameSceneRunning();
         const DemoDirector* pDirector = isScene ? getActiveDemo() : nullptr;
         const DemoExecutor* pExecutor = pDirector != nullptr ? getExecutor(pDirector) : nullptr;
-        JUTNativeLog("cutscene skip: %s (%s%s%s%s)\n", pWhat, MR::isActiveMoviePlayer() ? "movie" : "",
+        nebula_log("cutscene skip: %s (%s%s%s%s)\n", pWhat, MR::isActiveMoviePlayer() ? "movie" : "",
                  isScene && GameSceneFunction::isExecScenarioOpeningCamera() ? "opening camera" : "",
                  pExecutor != nullptr && pExecutor->mSheetName != nullptr ? pExecutor->mSheetName : "",
                  pExecutor == nullptr && pDirector != nullptr && pDirector->mDemoStarter != nullptr ? pDirector->mDemoStarter->mName : "");
@@ -190,10 +192,10 @@ namespace {
 
     // The question in the played language (NebulaText; the game's own Yes and No answer it), its lines broken as
     // the game's messages are (its text boxes do not wrap).
+    MR::GrowBuffer< char16_t > sQuestion;
+
     const char16_t* promptText() {
-        static char16_t question[128];
-        NebulaText::get(question, 128, "SkipCutsceneQuestion");
-        return question;
+        return NebulaText::get(&sQuestion, "SkipCutsceneQuestion");
     }
 
     void mute(bool on) {
@@ -219,7 +221,7 @@ namespace {
         MR::openSystemWipeFade();
         mute(false);
         silenceSe(false);
-        JUTNativeLog("cutscene skip: done after %d steps (%s)\n", sSteps, pWhy);
+        nebula_log("cutscene skip: done after %d steps (%s)\n", sSteps, pWhy);
     }
 };  // namespace
 
@@ -279,7 +281,7 @@ namespace NebulaCutsceneSkip {
             if (!sWindow->isSelectedYes() || !isSkippableNow()) {
                 sState = State_Idle;
                 mute(false);
-                JUTNativeLog("cutscene skip: declined\n");
+                nebula_log("cutscene skip: declined\n");
                 break;
             }
             sState = State_FadeOut;

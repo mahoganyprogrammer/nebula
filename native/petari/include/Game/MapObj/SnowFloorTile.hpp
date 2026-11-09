@@ -4,13 +4,12 @@ class TypedDraw;
 
 #include "Game/LiveActor/LiveActor.hpp"
 
-class JUTTexture;
+class GameTexture;
 
 class SnowFloorTile : public LiveActor {
 public:
     SnowFloorTile(const char*);
 
-    virtual ~SnowFloorTile();
     virtual void init(const TableIter&) override;
     virtual void draw() const override;
     virtual void control() override;
@@ -36,11 +35,11 @@ public:
     Vec2f mLastPlayerPoint;
     u16 mDirtyFrames;
     u8* mImage;
-    JUTTexture* mTexture;
+    GameTexture* mTexture;
     f32* mSnowDepth;
     f32* mReduceMap;
     u16 mReduceMapSize;
     Vec2f mLastPointerPoint;
-    JUTTexture* mTextures[2];
+    GameTexture* mTextures[2];
     u8 mTextureIndex;
 };

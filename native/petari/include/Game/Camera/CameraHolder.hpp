@@ -1,20 +1,17 @@
 #pragma once
 
 #include "Game/NameObj/NameObj.hpp"
+#include "Game/Util/NameIndex.hpp"
 
 class Camera;
-class CamTranslatorBase;
 
 class CameraHolder : public NameObj {
 public:
     CameraHolder(const char*);
 
     s32 getNum() const;
-    CamTranslatorBase* getTranslator(s32);
     s32 getIndexOf(const char*) const;
     const char* getNameStrOf(s32) const;
-    const char* getExplainStrOf(s32) const;
-    bool isPublic(s32) const;
     Camera* getDefaultCamera();
     s32 getIndexOfDefault() const;
     const char* getNameStrOfDefault() const;
@@ -28,6 +25,5 @@ public:
 
     s32 mDefaultCameraIndex;
     Camera** mCameras;
-    CamTranslatorBase** mTranslators;
-    Camera* mDefaultCamera;
+    MR::NameIndex mIndex;  // camera type name -> its index, the first of a name
 };

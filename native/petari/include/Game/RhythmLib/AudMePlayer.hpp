@@ -3,7 +3,7 @@
 #include "Game/Sound/MeLink.hpp"
 #include "Game/Sound/SoundGlobal.hpp"
 #include <nebula_geometry.hpp>
-#include <JSystem/JSupport/JSUList.hpp>
+#include "Game/System/NebulaList.hpp"
 
 class AudMeHandle;
 class NebulaArena;
@@ -28,7 +28,7 @@ public:
     void setResource(void*);
 
     u32 mNumEntries;
-    AudMePlayingParams* mParams;
+    const AudMePlayingParams* mParams;
     // The ME table file (host order, as the importer cooks it) and its name offsets from the file's start.
     const u8* mBase;
     const u32* mNameOffsets;
@@ -39,7 +39,7 @@ public:
 };
 
 // One Me phrase as the game plays it: its fades and the values it sends its player each frame.
-class AudMe : public JSULink< AudMe > {
+class AudMe : public NebulaListLink< AudMe > {
 public:
     static const s32 TIMED_PARAMS = 6;
 
@@ -61,7 +61,7 @@ public:
     AudMe();
     ~AudMe();
 
-    void requestStart(u32 trackBound, u32 place);
+    void requestStart(u32 trackBound, u32 stackBound, u32 place);
     void start();
     void stop(s32);
     void release();
@@ -70,7 +70,7 @@ public:
     void update();
     void setTimedParam(s32, f32, u32);
     void initTimed();
-    void updateTimedParams(bool);
+    void updateTimedParams();
     void setOuterPlayingParams(f32, f32, f32, s32, s32);
     void doneStop();
     void setPauseFlag(bool);
@@ -99,6 +99,7 @@ public:
     };
     bool mStartRequested;
     u32 mTrackBound;
+    u32 mStackBound;
     u32 mPlace;
     f32 mMgrVolume;
     f32 mVolume;
@@ -113,7 +114,7 @@ private:
 
 class AudMeMgr : public SoundGlobal< AudMeMgr > {
 public:
-    AudMeMgr(NebulaArena* pHeap);
+    AudMeMgr(NebulaArena* pArena);
 
     void setMeSeq(const void*);
     void setMeTable(void*);
@@ -133,9 +134,9 @@ public:
         return mParams.mParams[index].mPriority;
     }
 
-    NebulaArena* mHeap;
+    NebulaArena* mArena;
     const MeProgramFile* mMeSeq;
-    JSUList< AudMe > mMeList;
+    NebulaList< AudMe > mMeList;
     f32 mMeVolume;
     AudMePlayingParamsHolder mParams;
 };

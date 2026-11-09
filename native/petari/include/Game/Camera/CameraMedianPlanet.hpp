@@ -6,11 +6,10 @@
 class CameraMedianPlanet : public Camera {
 public:
     CameraMedianPlanet(const char* pName = "中点注目プラネットカメラ");
-    virtual ~CameraMedianPlanet();
 
     virtual void reset();
     virtual CameraTargetObj* calc();
-    virtual CamTranslatorBase* createTranslator();
+    virtual void setParamFromChunk(const CameraParamChunk*);
 
     void getPrevFront(Vec3f*);
     void constrainDipAngle(Vec3f*);

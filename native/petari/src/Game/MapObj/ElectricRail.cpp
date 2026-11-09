@@ -84,9 +84,6 @@ namespace NrvElectricRail {
     NEW_NERVE(ElectricRailNrvDisappeared, ElectricRail, Disappeared);
 };  // namespace NrvElectricRail
 
-ElectricRailPoint::~ElectricRailPoint() {
-}
-
 ElectricRailPoint::ElectricRailPoint(const char* pName) : LiveActor(pName), mHasShadow(true), mIsActive(true) {
 }
 
@@ -328,6 +325,9 @@ void ElectricRail::initMapToolInfo(const TableIter& rIter) {
     MR::initDefaultPos(this, rIter);
 
     MR::getPlacementArg0NoInit(rIter, &mRailHeight);
+    if (mRailHeight < 1) {
+        mRailHeight = 1;
+    }
 
     if (MR::useStageSwitchReadA(this, rIter)) {
         MR::listenStageSwitchOnA(this, MR::Functor(this, &ElectricRail::disappear));

@@ -1,5 +1,5 @@
 #include "Game/Camera/CameraWonderPlanet.hpp"
-#include "Game/Camera/CamTranslatorWonderPlanet.hpp"
+#include "Game/Camera/CameraParamChunk.hpp"
 #include "Game/Camera/CameraCalc.hpp"
 #include "Game/Camera/CameraLocalUtil.hpp"
 #include "Game/Camera/CameraMan.hpp"
@@ -14,9 +14,6 @@ namespace {
     // The camera eases up toward mAngleX by this much of the gap each frame.
     const f32 cAngleXChaseRate = 0.05f;
 }  // namespace
-
-CameraWonderPlanet::~CameraWonderPlanet() {
-}
 
 CameraWonderPlanet::CameraWonderPlanet(const char* pName)
     : Camera(pName), mDistMin(500.0f), mDistMax(2000.0f), mAngleX(MR::pi() / 4.0f), mIsRotating(), mRotateFrame() {
@@ -107,8 +104,9 @@ CameraTargetObj* CameraWonderPlanet::calc() {
     return CameraLocalUtil::getTarget(this);
 }
 
-CamTranslatorBase* CameraWonderPlanet::createTranslator() {
-    return new CamTranslatorWonderPlanet(this);
+void CameraWonderPlanet::setParamFromChunk(const CameraParamChunk* pChunk) {
+    CameraGeneralParam* general = pChunk->mGeneralParam;
+    setParam(general->mAxis.x, general->mAxis.y, general->mAngleA);
 }
 
 void CameraWonderPlanet::updateCameraReset() {

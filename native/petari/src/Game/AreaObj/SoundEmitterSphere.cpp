@@ -4,7 +4,7 @@
 #include "Game/Util/AreaObjUtil.hpp"
 #include "Game/Util/CameraUtil.hpp"
 #include "Game/Util/DemoUtil.hpp"
-#include "Game/Util/MemoryUtil.hpp"
+#include "Game/System/NebulaArena.hpp"
 #include "Game/Util/ObjUtil.hpp"
 #include "Game/Util/SoundUtil.hpp"
 
@@ -13,9 +13,6 @@ namespace {
                                      "SE_AT_LV_MAGMA_WIND_VOLCANO", "SE_AT_LV_KOOPA_FLOAT_SAND", "SE_AT_LV_WIND_RABBIT_MAZE"};
 };  // namespace
 
-SoundEmitterSphere::~SoundEmitterSphere() {
-}
-
 SoundEmitterSphere::SoundEmitterSphere(int formType, const char* pName)
     : AreaObj(formType, pName), mSoundObj(), mSoundPos(0.0f, 0.0f, 0.0f), mSoundName(), mSoundIndex() {
 }
@@ -23,9 +20,10 @@ SoundEmitterSphere::SoundEmitterSphere(int formType, const char* pName)
 void SoundEmitterSphere::init(const TableIter& rIter) {
     AreaObj::init(rIter);
 
-    mSoundName = ::cSoundNameTable[mObjArg0];
+    // Outside the table (unset is -1): silent.
+    mSoundName = mObjArg0 >= 0 && mObjArg0 < ARRAY_SIZE(::cSoundNameTable) ? ::cSoundNameTable[mObjArg0] : nullptr;
     mSoundIndex = mObjArg0;
-    mSoundObj = new AudAnmSoundObject(&mSoundPos, 4, MR::getCurrentHeap());
+    mSoundObj = new AudAnmSoundObject(&mSoundPos, 4, NebulaArena::current());
 
     MR::connectToSceneAreaObj(this);
     MR::registerDemoSimpleCastAll(this);
@@ -57,5 +55,7 @@ void SoundEmitterSphere::movement() {
     }
 
     mSoundObj->process();
-    MR::startSoundObjectLevel(mSoundObj, mSoundName);
+    if (mSoundName != nullptr) {
+        MR::startSoundObjectLevel(mSoundObj, mSoundName);
+    }
 }

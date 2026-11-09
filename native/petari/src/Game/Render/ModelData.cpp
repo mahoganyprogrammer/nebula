@@ -3,7 +3,8 @@
 #include "Game/Render/FrameList.hpp"
 #include "Game/Render/Model.hpp"
 #include "Game/Render/RenderTexture.hpp"
-#include <JSystem/JUtility/JUTTexture.hpp>
+#include "Game/Render/GameTexture.hpp"
+#include "Game/Util/StringUtil.hpp"
 #include <nebula_format.h>
 #include <string.h>
 
@@ -13,8 +14,6 @@ namespace {
     PlainMtxCalc< Skeleton::calcBasic, Skeleton::initBasic > sBasicCalc;
     PlainMtxCalc< Skeleton::calcSoftimage, Skeleton::initSoftimage > sSoftimageCalc;
     PlainMtxCalc< Skeleton::calcMaya, Skeleton::initMaya > sMayaCalc;
-
-    ModelData* sLive;
 
     // FNV-1a over lower-case ASCII: the material table of ray tracing names materials the same way.
     u32 hashName(u32 hash, const char* pName, bool stopAtDot) {
@@ -52,7 +51,6 @@ static ModelData* loadFile(void* pFile) {
         NEBULA_PANIC("a model file the importer did not write");
     }
     ModelData* pData = new ModelData();
-    memset(static_cast< void* >(pData), 0, sizeof(ModelData));
     pData->mFile = pHeader;
 
     switch (pHeader->flags & 15) {
@@ -149,9 +147,19 @@ static ModelData* loadFile(void* pFile) {
             }
         }
     }
-    pData->mNextLive = sLive;
-    sLive = pData;
     return pData;
+}
+
+ModelData::ModelData()
+    : mFile(nullptr), mJoints(nullptr), mMaterials(nullptr), mMeshes(nullptr), mTextures(nullptr), mTextureOwner(nullptr),
+      mBasicMtxCalc(nullptr), mGpuModel(0), mTextureStamp(0), mResourceHash(0) {
+}
+
+ModelData::~ModelData() {
+    if (mGpuModel != 0) {
+        const NebulaHostServices* pHost = nebula_host();
+        pHost->model_free(pHost->user, mGpuModel);
+    }
 }
 
 ModelData* ModelData::load(void* pFile) {
@@ -179,7 +187,7 @@ s32 ModelData::findMaterial(const char* pName) const {
 
 s32 ModelData::findTexture(const char* pName) const {
     for (u32 i = 0; i < getTextureCount(); i++) {
-        if (strcmp(getTextureName(i), pName) == 0) {
+        if (MR::isEqualString(getTextureName(i), pName)) {
             return static_cast< s32 >(i);
         }
     }
@@ -217,25 +225,3 @@ void ModelData::setResourceName(const char* pName) {
         mMaterials[i].mSourceHash = hashName(mResourceHash, getMaterialName(i), false);
     }
 }
-
-namespace ModelDataList {
-    void forget(uintptr_t start, uintptr_t end) {
-        const NebulaHostServices* pHost = nebula_host();
-        ModelData** ppAt = &sLive;
-        while (*ppAt != nullptr) {
-            ModelData* pData = *ppAt;
-            const uintptr_t object = reinterpret_cast< uintptr_t >(pData);
-            const uintptr_t file = reinterpret_cast< uintptr_t >(pData->mFile);
-            if ((object >= start && object < end) || (file >= start && file < end)) {
-                if (pData->mGpuModel != 0) {
-                    pHost->model_free(pHost->user, pData->mGpuModel);
-                }
-                *ppAt = pData->mNextLive;
-            } else {
-                ppAt = &pData->mNextLive;
-            }
-        }
-        RenderTexture::forget(start, end);
-        forgetSiteMeshes(reinterpret_cast< const void* >(start), reinterpret_cast< const void* >(end));
-    }
-}  // namespace ModelDataList

@@ -4,7 +4,7 @@
 
 #include "Game/LiveActor/LiveActor.hpp"
 
-class JUTTexture;
+class GameTexture;
 
 class WhirlPoolPoint {
 public:
@@ -29,7 +29,6 @@ class WhirlPoolAccelerator : public LiveActor {
 public:
     WhirlPoolAccelerator(const char* pName);
 
-    virtual ~WhirlPoolAccelerator();
     virtual void init(const TableIter& rIter);
     virtual void movement();
     virtual void draw() const;
@@ -47,6 +46,6 @@ public:
     f32 mRotation;
     f32 mTexOffsetU0;
     f32 mTexOffsetV0;
-    JUTTexture* mTexture;
+    GameTexture* mTexture;
     Vec3f mClippingCenter;
 };

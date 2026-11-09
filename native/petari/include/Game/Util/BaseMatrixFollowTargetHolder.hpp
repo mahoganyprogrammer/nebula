@@ -49,8 +49,6 @@ class BaseMatrixFollowTargetHolder : public NameObj {
 public:
     BaseMatrixFollowTargetHolder(const char*, s32, s32);
 
-    virtual ~BaseMatrixFollowTargetHolder();
-
     virtual void initAfterPlacement();
     virtual void movement();
 
@@ -65,7 +63,7 @@ public:
 
 class BaseMatrixFollower {
 public:
-    BaseMatrixFollower(NameObj*, const TableIter&);
+    explicit BaseMatrixFollower(const TableIter&);
 
     virtual void setGravityFollowHost(const NameObj*) {
     }
@@ -78,7 +76,6 @@ public:
     bool isValid() const;
 
     PlacementLink* mLinkInfo;
-    NameObj* mFollowerObj;
     BaseMatrixFollowTarget* mFollowTarget;
     s32 mFollowID;
 };

@@ -11,7 +11,6 @@ class TicoFat : public NPCActor {
 public:
     TicoFat(const char*);
 
-    virtual ~TicoFat();
     virtual void init(const TableIter&);
     virtual void initAfterPlacement();
     virtual void kill();
@@ -28,7 +27,6 @@ public:
     virtual void appearInformation() const;
 
 
-    const char* getActionName(const char*);
     void setCameraParam();
     bool eventFunc(u32);
     f32 calcScale();

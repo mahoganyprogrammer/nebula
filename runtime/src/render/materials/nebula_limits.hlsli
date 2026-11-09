@@ -3,13 +3,7 @@
 #define NEBULA_SHARED_LIMITS_H
 
 #define NEBULA_NONE32 0xFFFFFFFFu
+// No shader reads it: the cooker (crates/nebula-import/src/cook/limits.rs) does, until the model format is counted.
 #define NEBULA_MATERIAL_SLOTS 16
-
-
-#define NEBULA_LIT_EYE_INDEX 16
-#define NEBULA_LIT_NORMAL_INDEX 17
-#define NEBULA_LIT_SET_INDEX 18
-#define NEBULA_MOTION_CURRENT_INDEX 19
-#define NEBULA_MOTION_PREVIOUS_INDEX 20
 
 #endif

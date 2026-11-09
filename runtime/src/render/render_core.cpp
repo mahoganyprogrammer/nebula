@@ -134,8 +134,8 @@ std::string present_snapshot_path() {
 // The vblanks per present slot for a rate on a display of `refresh` hertz: a whole number, the rate kept above 60.
 std::int64_t vblanks_per_slot(double refresh, double rate) {
     std::int64_t slot = std::max<std::int64_t>(1, static_cast<std::int64_t>(std::ceil(refresh / rate - 0.02)));
-    if (refresh / static_cast<double>(slot) < 61.0) {
-        slot = std::max<std::int64_t>(1, static_cast<std::int64_t>(refresh / 61.0));
+    if (refresh / static_cast<double>(slot) < kGameStepRate + 1.0) {
+        slot = std::max<std::int64_t>(1, static_cast<std::int64_t>(refresh / (kGameStepRate + 1.0)));
     }
     return slot;
 }
@@ -478,7 +478,7 @@ void RenderCore::report_frame_tail_window() noexcept {
                <<' '<<name<<"-p95-upper-us="<<percentile(95u)<<' '<<name<<"-p99-upper-us="<<percentile(99u)
                <<' '<<name<<"-max-us="<<a.monitor_max_ns/1000u;
             // Percentile ladder (1 ms bins) to show the shape of the interval distribution: even steps
-            // for a continuous process, plateaus for intervals quantized to display retraces. Meaningful
+            // for a continuous process, plateaus for intervals quantized to display refreshes. Meaningful
             // only in a window with tens of intervals.
             row<<' '<<name<<"-pct-upper-us="
                <<percentile(5u)<<'/'<<percentile(10u)<<'/'<<percentile(25u)<<'/'
@@ -766,7 +766,7 @@ void RenderCore::start_interp_sequence() {
     static const std::int64_t frequency = galaxy::qpc_frequency();
     const std::int64_t now = galaxy::qpc_now();
     const RenderConfig cfg = get_render_config();
-    double rate = std::max(61.0, present_frame_rate(
+    double rate = std::max(kGameStepRate + 1.0, present_frame_rate(
         presented_max_fps(cfg), cfg.vsync_interval, renderer_.display_refresh_hz()));
     // VSync with the display's vblanks timed: every slot is a vblank (every n-th for a rate below the refresh, kept
     // above 60), so each picture's moment is the one its vblank shows. The game's 60 Hz is not locked to the
@@ -807,7 +807,7 @@ void RenderCore::start_interp_sequence() {
     // restarts.
     interp_slot_period_qpc_ = on_vblanks ? vblanks_per_slot * vblank_period
                                          : static_cast<std::int64_t>(static_cast<double>(frequency) / rate);
-    const bool locked = !on_vblanks && std::abs(rate / 60.0 - std::round(rate / 60.0)) < 0.02;
+    const bool locked = !on_vblanks && std::abs(rate / kGameStepRate - std::round(rate / kGameStepRate)) < 0.02;
     // The arrival clock: the render thread sees a frame's present when it
     // reaches the queue (a chunk in progress delays it by milliseconds), so
     // arrivals are the game's frame cadence, smoothed: the prediction one or
@@ -815,7 +815,7 @@ void RenderCore::start_interp_sequence() {
     // period tracking the game's rate. A miss by a third of a period or more
     // (pause, hitch) restarts it at the measured time.
     if (interp_frame_period_qpc_ == 0) {
-        interp_frame_period_qpc_ = frequency / 60;
+        interp_frame_period_qpc_ = frequency / kGameStepsPerSecond;
     }
     std::int64_t arrival = now;
     if (interp_arrival_qpc_ != 0 && now > interp_arrival_qpc_) {
@@ -827,12 +827,12 @@ void RenderCore::start_interp_sequence() {
         if (periods <= 4 && std::abs(error) < interp_frame_period_qpc_ / 3) {
             arrival = predicted + error / 8;
             interp_frame_period_qpc_ = std::clamp<std::int64_t>(
-                interp_frame_period_qpc_ + error / (64 * periods), frequency / 62, frequency / 58);
+                interp_frame_period_qpc_ + error / (64 * periods), frequency / (kGameStepsPerSecond + 2), frequency / (kGameStepsPerSecond - 2));
         }
     }
     interp_arrival_qpc_ = arrival;
     interp_sequence_.frame_qpc = arrival;
-    interp_sequence_.lead = locked ? 60.0 / rate : 0.0;
+    interp_sequence_.lead = locked ? kGameStepRate / rate : 0.0;
     if (on_vblanks) {
         // The next slot moves to the vblank nearest where it was due, so the clock follows the display without
         // adding or dropping a slot; a clock not running starts at the vblank nearest now.
@@ -868,7 +868,7 @@ unsigned RenderCore::interp_gpu_governor(double& rate) {
     }
     const unsigned allowed = std::min(configured, interp_cadence_cap_);
     const std::uint64_t serial = interp_sequence_serial_;
-    if (serial - interp_gpu_checked_ >= 30u && serial >= interp_gpu_warm_until_) {
+    if (serial - interp_gpu_checked_ >= 30u && galaxy::qpc_now() >= interp_gpu_warm_until_qpc_) {
         interp_gpu_checked_ = serial;
         const double generated_ms = renderer_.interpolation_gpu_cost_ms();
         if (generated_ms > 0.0) {
@@ -903,7 +903,7 @@ unsigned RenderCore::interp_gpu_governor(double& rate) {
         return configured;
     }
     ++interp_gpu_capped_;
-    rate = 60.0 * static_cast<double>(generated + 1u);
+    rate = kGameStepRate * static_cast<double>(generated + 1u);
     return generated;
 }
 
@@ -923,7 +923,7 @@ void RenderCore::restart_interp_governors() {
     interp_gpu_cap_ = 7u;
     interp_gpu_cap_serial_ = interp_sequence_serial_;
     interp_gpu_checked_ = interp_sequence_serial_;
-    interp_gpu_warm_until_ = interp_sequence_serial_ + 60u;
+    interp_gpu_warm_until_qpc_ = now + frequency;  // one second of generated-frame times left out
     renderer_.reset_generated_gpu_ema();
     interp_cadence_cap_ = 7u;
     interp_cadence_interval_s_ = 2u;
@@ -939,7 +939,8 @@ void RenderCore::restart_interp_governors() {
 void RenderCore::note_game_frame_cadence(std::int64_t now_qpc) {
     static const std::int64_t frequency = galaxy::qpc_frequency();
     const bool trace = ::galaxy::diagnostics_recording() || ::galaxy::run_option_u64(::galaxy::run_options().trace_present_stats, 0u) != 0u;
-    const std::int64_t period = frequency * 1001 / 60000;
+    // The game frame period the arrivals follow (start_interp_sequence's smoothed estimate), else the game step.
+    const std::int64_t period = interp_frame_period_qpc_ != 0 ? interp_frame_period_qpc_ : frequency / galaxy::kGameStepsPerSecond;
     // Since the frame before: the game's waits on the render thread, and the render thread's generated frame time.
     const std::uint64_t waited_total = game_wait_qpc_.load(std::memory_order_relaxed);
     const auto waited = static_cast<std::int64_t>(waited_total - interp_cadence_wait_seen_);
@@ -987,7 +988,7 @@ void RenderCore::note_game_frame_cadence(std::int64_t now_qpc) {
         // The walk at t = 1 alone costs the game its frames when it takes a
         // quarter of a frame or more.
         const double generated_ms = renderer_.interpolation_gpu_cost_ms();
-        if (cap == 0u && renderer_.temporal_interpolation() && generated_ms * 4.0 >= 1000.0 / 60.0) {
+        if (cap == 0u && renderer_.temporal_interpolation() && generated_ms * 4.0 >= 1000.0 / kGameStepRate) {
             renderer_.suspend_temporal_interpolation(generated_ms);
         }
         interp_cadence_cap_ = cap;
@@ -1076,12 +1077,12 @@ void RenderCore::note_game_frame_cadence(std::int64_t now_qpc) {
 double RenderCore::interp_rate_with(unsigned generated) const {
     static const std::int64_t frequency = galaxy::qpc_frequency();
     if (generated == 0u) {
-        return 60.0;
+        return kGameStepRate;
     }
     const RenderConfig cfg = get_render_config();
     double rate = generated < interp_frames_
-        ? 60.0 * static_cast<double>(generated + 1u)
-        : std::max(61.0, present_frame_rate(presented_max_fps(cfg), cfg.vsync_interval, renderer_.display_refresh_hz()));
+        ? kGameStepRate * static_cast<double>(generated + 1u)
+        : std::max(kGameStepRate + 1.0, present_frame_rate(presented_max_fps(cfg), cfg.vsync_interval, renderer_.display_refresh_hz()));
     std::int64_t vblank = 0;
     std::int64_t vblank_period = 0;
     if (cfg.vsync_interval != 0u && renderer_.vblank_grid(vblank, vblank_period) && vblank_period > 0) {
@@ -1132,7 +1133,7 @@ void RenderCore::supersede_interp_sequence() {
 // t of the next slot in the playing sequence (see advance_interp_sequence).
 double RenderCore::interp_slot_t() const {
     static const std::int64_t frequency = galaxy::qpc_frequency();
-    return static_cast<double>(interp_slot_due_qpc_ - interp_sequence_.frame_qpc) * 60.0 /
+    return static_cast<double>(interp_slot_due_qpc_ - interp_sequence_.frame_qpc) * kGameStepRate /
                static_cast<double>(frequency) + interp_sequence_.lead;
 }
 
@@ -1235,7 +1236,7 @@ void RenderCore::advance_interp_sequence(bool flush) {
         }
         const std::int64_t slot = interp_slot_due_qpc_;
         // A free-running slot due just before the arrival shows t = 0.
-        const double t = std::max(0.0, static_cast<double>(slot - sequence.frame_qpc) * 60.0 /
+        const double t = std::max(0.0, static_cast<double>(slot - sequence.frame_qpc) * kGameStepRate /
                                            static_cast<double>(frequency) + sequence.lead);
         if (!flush) {
             interp_slot_due_qpc_ = slot + interp_slot_period_qpc_;
@@ -1427,7 +1428,7 @@ bool RenderCore::render_generated_frame(float t) {
 bool RenderCore::skip_for_present_rate() {
     const RenderConfig cfg = get_render_config();
     const double rate = present_frame_rate(presented_max_fps(cfg), cfg.vsync_interval, renderer_.display_refresh_hz());
-    if (rate >= 59.0) {
+    if (rate >= kGameStepRate - 1.0) {
         next_rate_present_qpc_ = 0;
         return false;
     }
@@ -1621,7 +1622,7 @@ bool RenderCore::restart_device() {
         std::unique_lock<std::shared_mutex> rebuilding = device_gate_.begin_rebuild();
         const FrameMap frame = renderer_.frame_map();
         pipelines_.shutdown();
-        movie_replacements_.shutdown();
+        movie_playback_.shutdown();
         texture_store_.shutdown();
         registries_.lose_device();
         display_pictures_.shutdown();
@@ -1693,7 +1694,7 @@ void RenderCore::render_loop() {
             interp_stopping_ = stop_render_thread_;
             // A native overlay over a game showing no interpolated frames (the HOME Menu's paused game draws no 3D scene;
             // interpolation waits while the settings are open): the latest frame again at each display slot, so the
-            // overlay keeps the rate play had instead of the video retrace's 60 Hz.
+            // overlay keeps the rate play had instead of the game's 60 Hz frame rate.
             overlay_idle = !stop_render_thread_ && overlay_idle_presents();
             if (!overlay_idle) {
                 overlay_idle_due_qpc_ = 0;
@@ -2141,7 +2142,7 @@ void RenderCore::begin_walk_frame(ListEntry& entry) {
             folders.push_back(std::move(movies));
         }
         for (std::filesystem::path& folder : movie_mod_folders()) folders.push_back(std::move(folder));
-        movie_replacements_.configure(std::move(folders), [this](std::uint64_t size) {
+        movie_playback_.configure(std::move(folders), [this](std::uint64_t size) {
             return texture_store_.backend().create_upload_chunk(size);
         });
     }
@@ -2165,9 +2166,14 @@ void RenderCore::begin_walk_frame(ListEntry& entry) {
         }
         retired_tables_.clear();
         registries_.forget_textures(freed_textures_, retired_tables_);
-        for (const gpu::Table table : retired_tables_) {
-            renderer_.retire_texture_table(table);
+#if defined(NEBULA_GPU_VULKAN)
+        // Draws with texture lists keep no tables: their lists are written each walk.
+        if (!renderer_.bindless()) {
+            for (const gpu::Table table : retired_tables_) {
+                renderer_.retire_texture_table(table);
+            }
         }
+#endif
         for (const std::uint32_t id : freed_textures_) {
             if (TextureStore::is_target(id)) {
                 renderer_.free_target(id, texture_store_);
@@ -2177,18 +2183,29 @@ void RenderCore::begin_walk_frame(ListEntry& entry) {
     registries_.reclaim(renderer_.completed_fence_value());
     // Finished replacements upload here and take the place of their originals.
     texture_store_.apply_texture_packs();
-    // The movie frame this walk draws: a replacement's planes in place of the game's.
+    // The movie frame this walk draws, as the movie quad's planes.
     if (render_movie_frame_.frame != MovieFrameMark::kNone || texture_store_.movie_override_active()) {
         if (++movie_stats_tick_ % 240u == 0u) {
-            const MovieReplacements::Stats stats = movie_replacements_.stats();
+            const MoviePlayback::Stats stats = movie_playback_.stats();
             if (stats.decoded != 0u) {
                 std::fprintf(stderr, "[movie] decoded=%llu shown=%llu late=%llu seeks=%llu convert-ms=%.2f/frame\n",
                              static_cast<unsigned long long>(stats.decoded), static_cast<unsigned long long>(stats.shown),
                              static_cast<unsigned long long>(stats.late), static_cast<unsigned long long>(stats.seeks),
                              stats.convert_ms / static_cast<double>(stats.decoded));
             }
+            if (stats.cooked_decoded != 0u) {
+                std::fprintf(stderr,
+                             "[movie] cooked decoded=%llu shown=%llu waits=%llu seeks=%llu failed=%llu decode-ms=%.3f/frame "
+                             "wait-ms=%.3f\n",
+                             static_cast<unsigned long long>(stats.cooked_decoded),
+                             static_cast<unsigned long long>(stats.cooked_shown),
+                             static_cast<unsigned long long>(stats.cooked_waits),
+                             static_cast<unsigned long long>(stats.cooked_seeks),
+                             static_cast<unsigned long long>(stats.cooked_failed),
+                             stats.cooked_decode_ms / static_cast<double>(stats.cooked_decoded), stats.cooked_wait_ms);
+            }
         }
-        texture_store_.set_movie_override(render_movie_frame_, movie_replacements_.frame(render_movie_frame_));
+        texture_store_.set_movie_override(render_movie_frame_, movie_playback_.frame(render_movie_frame_));
     }
     // Pipelines not yet asked for, for the settings in use.
     {
