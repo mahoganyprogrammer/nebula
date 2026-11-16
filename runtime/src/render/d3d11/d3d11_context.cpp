@@ -60,10 +60,21 @@ bool Context::initialize(const std::string& chosen_gpu, bool debug_layer) {
         return true;
     }
     failure_.clear();
-    if (FAILED(CreateDXGIFactory2(debug_layer ? DXGI_CREATE_FACTORY_DEBUG : 0u, IID_PPV_ARGS(&factory_))) &&
-        FAILED(CreateDXGIFactory2(0u, IID_PPV_ARGS(&factory_)))) {
+      // CreateDXGIFactory2 is Windows 8+; on Windows 7 (with Platform Update) use
+    // CreateDXGIFactory1 and QueryInterface for IDXGIFactory2.
+    ComPtr<IDXGIFactory1> factory1;
+    HRESULT factory_hr = CreateDXGIFactory1(IID_PPV_ARGS(&factory1));
+    if (FAILED(factory_hr)) {
         failure_ = "No DXGI factory";
         return false;
+    }
+    // Upgrade to IDXGIFactory2 when the runtime has it (Windows 8+, or Windows 7
+    // with KB2670838). The base factory_ stays valid either way.
+    ComPtr<IDXGIFactory2> factory2;
+    if (SUCCEEDED(factory1.As(&factory2))) {
+        factory_ = factory2;
+    } else {
+        factory_ = factory1;   // Windows 7 without the Platform Update
     }
     // Adapters in the system's order for performance where DXGI 1.6 gives it, else its plain order; software ones never.
     std::vector<ComPtr<IDXGIAdapter1>> adapters;
