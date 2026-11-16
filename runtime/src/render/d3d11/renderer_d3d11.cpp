@@ -96,7 +96,7 @@ bool RendererD3D11::initialize(int window_width, int window_height, const FrameM
         set_mod_post_compiler(&compile_mod_post_stage, false);
         set_mod_post_motion(false);
         reset_sampler_frame();
-        ID3D11Device1* const d3d = d3d11::Context::get().device();
+   ID3D11Device1* const d3d = d3d11::Context::get().device1();
         if (!bloom_.initialize(d3d)) {
             std::cerr << "[game-bloom] off on this device; the game's own chain draws it\n";
         }
@@ -144,7 +144,8 @@ bool RendererD3D11::create_device() {
 }
 
 bool RendererD3D11::create_states() {
-    ID3D11Device1* const device = d3d11::Context::get().device();
+    ID3D11Device1* const device = d3d11::Context::get().device1();
+    
     const auto check = [](HRESULT hr, const char* what) {
         if (FAILED(hr)) {
             throw std::runtime_error(std::string("the renderer's ") + what + " could not be made");
@@ -568,7 +569,7 @@ void RendererD3D11::begin_frame() {
     }
     reset_sampler_frame();
     // The frame's GPU time: always for the scene's average (interpolation_gpu_cost_ms), a query pair a frame.
-    ID3D11Device1* const device = d3d11::Context::get().device();
+    ID3D11Device1* const device = d3d11::Context::get().device1();
     if (!frame.disjoint) {
         D3D11_QUERY_DESC query{D3D11_QUERY_TIMESTAMP_DISJOINT, 0u};
         frame.timed = SUCCEEDED(device->CreateQuery(&query, &frame.disjoint));
