@@ -368,13 +368,12 @@ bool RendererD3D11::resize_swap_chain(std::uint32_t width, std::uint32_t height)
     if (!swap_chain_) {
         return false;
     }
-    // Every reference to the buffers goes first (the immediate context's included).
     context()->OMSetRenderTargets(0u, nullptr, nullptr);
     backbuffer_rtv_.Reset();
     context()->Flush();
-    DXGI_SWAP_CHAIN_DESC1 desc{};
-    swap_chain_->GetDesc1(&desc);
-    if (FAILED(swap_chain_->ResizeBuffers(kSwapChainBuffers, width, height, swap_format_, desc.Flags))) {
+    DXGI_SWAP_CHAIN_DESC desc{};
+    swap_chain_->GetDesc(&desc);
+    if (FAILED(swap_chain_->ResizeBuffers(desc.BufferCount, width, height, swap_format_, desc.Flags))) {
         std::cerr << "[Renderer] resize: ResizeBuffers failed\n";
         return false;
     }
@@ -389,7 +388,6 @@ bool RendererD3D11::resize_swap_chain(std::uint32_t width, std::uint32_t height)
     swap_dirty_ = false;
     return true;
 }
-
 RendererD3D11::Kept RendererD3D11::take_apart_lost_device() {
     keep_window_ = true;
     try {
