@@ -1011,11 +1011,13 @@ void RendererD3D11::reset_draw_bindings() noexcept {
 }
 void RendererD3D11::bind_constants(unsigned slot, gpu::Address address, bool vertex, bool pixel) {
     const d3d11::Context::BufferOffset at = d3d11::Context::get().resolve(address);
-    ID3D11Buffer* buffer = at.buffer != nullptr ? at.buffer->bound(d3d11::BufferUse::Constants) : nullptr;
+    // The video-memory copy exists only on the offsetting path. Without it (feature level 11_0 drivers) a constant buffer
+    // cannot be larger than 64 KB, so the ring's copy cannot even be made: the draw's window is read from the CPU copy.
     const UINT first = static_cast<UINT>(at.offset / 16u);
     const UINT count = at.buffer != nullptr ? constants_in(at.buffer->size, at.offset) : 0u;
-    if (count == 0u) {
-        buffer = nullptr;
+    ID3D11Buffer* buffer = nullptr;
+    if (count != 0u && d3d11::Context::get().caps().constant_buffer_offsetting) {
+        buffer = at.buffer->bound(d3d11::BufferUse::Constants);
     }
     ID3D11DeviceContext1* const ctx = context();
   //  if (d3d11::Context::get().caps().constant_buffer_offsetting) {
@@ -1030,12 +1032,13 @@ void RendererD3D11::bind_constants(unsigned slot, gpu::Address address, bool ver
     //}
     
     // Feature level 11_0: copy the draw's window into a dynamic buffer and bind from byte 0.
-    if (buffer == nullptr) {
+    if (count == 0u) {
+        ID3D11Buffer* const none = nullptr;
         if (vertex) {
-            ctx->VSSetConstantBuffers(slot, 1u, &buffer);
+            ctx->VSSetConstantBuffers(slot, 1u, &none);
         }
         if (pixel) {
-            ctx->PSSetConstantBuffers(slot, 1u, &buffer);
+            ctx->PSSetConstantBuffers(slot, 1u, &none);
         }
         return;
     }
@@ -1112,7 +1115,10 @@ void RendererD3D11::flush_draws() {
             for (unsigned i = 0; i < 2u; ++i) {
                 const d3d11::Context::BufferOffset at = device.resolve(op.a[i]);
                 count[i] = at.buffer != nullptr ? constants_in(at.buffer->size, at.offset) : 0u;
-                buffers[i] = count[i] != 0u ? at.buffer->bound(d3d11::BufferUse::Constants) : nullptr;
+                // Only the offsetting path needs the video-memory copy (a 64 KB limit rules it out on 11_0 drivers).
+                buffers[i] = count[i] != 0u && d3d11::Context::get().caps().constant_buffer_offsetting
+                                 ? at.buffer->bound(d3d11::BufferUse::Constants)
+                                 : nullptr;
                 first[i] = static_cast<UINT>(at.offset / 16u);
             }
                           
@@ -1122,7 +1128,7 @@ void RendererD3D11::flush_draws() {
                           // Feature level 11_0: copy each window into its own whole buffer, bind both from byte 0.
             ID3D11Buffer* whole[2] = {fl11_constants_b1_.Get(), fl11_constants_b2_.Get()};
             for (unsigned i = 0; i < 2u; ++i) {
-                if (buffers[i] == nullptr) {
+                if (count[i] == 0u) {
                     whole[i] = nullptr;
                     continue;
                 }
