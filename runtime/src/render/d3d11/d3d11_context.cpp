@@ -76,14 +76,22 @@ bool Context::initialize(const std::string& chosen_gpu, bool debug_layer) {
         factory2_.Reset();   // no 1.2 factory on Win 7 without KB2670838
     }
     
-    // Adapters in the system's order for performance where DXGI 1.6 gives it, else its plain order; software ones never.
+      // Adapters in the system's order for performance where DXGI 1.6 gives it, else its plain order; software ones never.
     std::vector<ComPtr<IDXGIAdapter1>> adapters;
     ComPtr<IDXGIFactory6> factory6;
     if (SUCCEEDED(factory_.As(&factory6))) {
         ComPtr<IDXGIAdapter1> adapter;
-        for (UINT i = 0; factory6->EnumAdapterByGpuPreference(i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
-                                                             IID_PPV_ARGS(&adapter)) != DXGI_ERROR_NOT_FOUND;
-             ++i) {
+        for (UINT i = 0; ; ++i) {
+            const HRESULT hr = factory6->EnumAdapterByGpuPreference(
+                i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&adapter));
+            if (hr == DXGI_ERROR_NOT_FOUND) {
+                break;
+            }
+            if (FAILED(hr) || adapter == nullptr) {
+                std::cerr << "[gpu] EnumAdapterByGpuPreference failed: 0x" << std::hex
+                          << static_cast<unsigned long>(hr) << std::dec << '\n';
+                break;
+            }
             adapters.push_back(adapter);
             adapter.Reset();
         }
