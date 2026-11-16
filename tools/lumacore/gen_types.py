@@ -726,41 +726,41 @@ class Reader:
                 # a named member of an anonymous type: its fields as "outer.inner"
                 start = self.api.typeOffsetOf(owner_type, spelled.encode())
                 self.fields(decl, self.api.type(decl), row, prefix + spelled + ".", base_bits + max(start, 0))
-
-    def want(self, t):
-    """A template instance, or a record nested in one, that a type names (by value, pointer, reference or array,
-    as a function pointer's result or parameter, as a member pointer's class) is a row of its own; else it
-    would be named by texts and described nowhere."""
-    if self.unit_pass:
-        # A template's instance is the header pass's row; one only a .cpp names is left out there by its name.
-        self.named_instances.update(n for n in type_names(self.type_text(t) or "") if "<" in n)
-        return
-    self.member_alias(t)
-    if t.kind == T_TYPEDEF:
-        # A typedef names its underlying: alias() writes the alias row and recurses want() on the underlying
-        # (a member-pointer, whose pointee function type this then walks).
-        self.alias(self.api.declaration(t))
-        return
-    t = self.api.canonical(t)
-    while t.kind in (T_POINTER, T_LVALUE, T_RVALUE, T_MEMBER_POINTER, T_CONSTANT_ARRAY, T_INCOMPLETE_ARRAY):
-        if t.kind == T_MEMBER_POINTER:
-            self.want(self.api.classType(t))
-            pointee = self.api.pointee(t)
-            if pointee.kind in (I.T_FUNCTION_PROTO, I.T_FUNCTION_NO_PROTO):
-                self.want(self.api.resultType(pointee))
-                for i in range(max(self.api.numArgTypes(pointee), 0)):
-                    self.want(self.api.argType(pointee, i))
-        t = self.api.canonical(self.api.element(t) if t.kind in (T_CONSTANT_ARRAY, T_INCOMPLETE_ARRAY) else self.api.pointee(t))
-    if t.kind in (I.T_FUNCTION_PROTO, I.T_FUNCTION_NO_PROTO):
-        self.want(self.api.resultType(t))
-        for i in range(max(self.api.numArgTypes(t), 0)):
-            self.want(self.api.argType(t, i))
-        return
-    decl = self.api.declaration(t)
-    if decl.kind in RECORDS:
-        self.pending.append(decl)
-    elif decl.kind == K_ENUM and self.name(decl) not in self.enums:
-        self.enum(decl, again=self.in_instance(decl) is not None)
+            
+        def want(self, t):
+        """A template instance, or a record nested in one, that a type names (by value, pointer, reference or array,
+        as a function pointer's result or parameter, as a member pointer's class) is a row of its own; else it
+        would be named by texts and described nowhere."""
+        if self.unit_pass:
+            # A template's instance is the header pass's row; one only a .cpp names is left out there by its name.
+            self.named_instances.update(n for n in type_names(self.type_text(t) or "") if "<" in n)
+            return
+        self.member_alias(t)
+        if t.kind == T_TYPEDEF:
+            # A typedef names its underlying: alias() writes the alias row and recurses want() on the underlying
+            # (a member-pointer, whose pointee function type this then walks).
+            self.alias(self.api.declaration(t))
+            return
+        t = self.api.canonical(t)
+        while t.kind in (T_POINTER, T_LVALUE, T_RVALUE, T_MEMBER_POINTER, T_CONSTANT_ARRAY, T_INCOMPLETE_ARRAY):
+            if t.kind == T_MEMBER_POINTER:
+                self.want(self.api.classType(t))
+                pointee = self.api.pointee(t)
+                if pointee.kind in (I.T_FUNCTION_PROTO, I.T_FUNCTION_NO_PROTO):
+                    self.want(self.api.resultType(pointee))
+                    for i in range(max(self.api.numArgTypes(pointee), 0)):
+                        self.want(self.api.argType(pointee, i))
+            t = self.api.canonical(self.api.element(t) if t.kind in (T_CONSTANT_ARRAY, T_INCOMPLETE_ARRAY) else self.api.pointee(t))
+        if t.kind in (I.T_FUNCTION_PROTO, I.T_FUNCTION_NO_PROTO):
+            self.want(self.api.resultType(t))
+            for i in range(max(self.api.numArgTypes(t), 0)):
+                self.want(self.api.argType(t, i))
+            return
+        decl = self.api.declaration(t)
+        if decl.kind in RECORDS:
+            self.pending.append(decl)
+        elif decl.kind == K_ENUM and self.name(decl) not in self.enums:
+            self.enum(decl, again=self.in_instance(decl) is not None)
 
     def want_signature(self, c):
         """The result and parameter types of a function or method (header pass): what its signature names is described
