@@ -28,7 +28,7 @@ const RendererD3D11::ModPostShaders* RendererD3D11::mod_post_stages(const ModPos
             return &kept;
         }
     }
-    ID3D11Device1* const device = d3d11::Context::get().device();
+    ID3D11Device* const device = d3d11::Context::get().device();
     ModPostShaders made{program.id, nullptr, nullptr};
     const HRESULT vertex = device->CreateVertexShader(program.vertex.data(), program.vertex.size(), nullptr, &made.vertex);
     const HRESULT pixel = FAILED(vertex) ? vertex : device->CreatePixelShader(program.pixel.data(), program.pixel.size(), nullptr, &made.pixel);
@@ -49,7 +49,7 @@ void RendererD3D11::record_mod_post(const ModPostProgram& program, ModPostConsta
     if (!picture || !picture->view || !scene_.color || mod_post_failed_) {
         return;
     }
-    ID3D11DeviceContext1* const ctx = context();
+    ID3D11DeviceContext* const ctx = context();
     if (!mod_post_constants_) {
         D3D11_BUFFER_DESC desc{};
         desc.Usage = D3D11_USAGE_DYNAMIC;
@@ -142,10 +142,15 @@ void RendererD3D11::record_native_call(const NebulaCall& call, LumaDrawNativeFra
     if (call.fn == nullptr || !scene_.color || native_state_failed_) {
         return;
     }
-    ID3D11Device1* const device = d3d11::Context::get().device();
+  ID3D11Device1* const device = d3d11::Context::get().device1();
+if (device == nullptr) {
+    std::cerr << "[draw.native] Direct3D 11.1 unavailable: native functions are not called\n";
+    native_state_failed_ = true;
+    return;
+}
     if (!native_state_) {
         const D3D_FEATURE_LEVEL level = device->GetFeatureLevel();
-        if (FAILED(device->CreateDeviceContextState(0u, &level, 1u, D3D11_SDK_VERSION, __uuidof(ID3D11Device1), nullptr,
+        if (FAILED(device->CreateDeviceContextState(0u, &level, 1u, D3D11_SDK_VERSION, __uuidof(ID3D11Device), nullptr,
                                                     &native_state_))) {
             std::cerr << "[draw.native] context state failed: native functions are not called\n";
             native_state_failed_ = true;
