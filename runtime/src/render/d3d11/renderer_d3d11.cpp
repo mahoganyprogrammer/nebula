@@ -39,7 +39,7 @@ UINT constants_in(std::uint64_t size, std::uint64_t offset) noexcept {
     constexpr std::size_t kFl11ConstantBytes = 4096;
     return static_cast<UINT>(std::min<std::uint64_t>(D3D11_REQ_CONSTANT_BUFFER_ELEMENT_COUNT, left & ~std::uint64_t{15}));
 }
-
+   constexpr std::size_t kFl11ConstantBytes = 4096;
 // RendererD3D11::GpuPass by name: the settings page's, and present-stats' gpu-pass-ms (Direct3D 12's names).
 constexpr const char* kPassTimeNames[] = {"scene", "resolve", "frame read", "display copy", "bloom", "scene aa", "scene ao",
                                           "present", "camera"};
