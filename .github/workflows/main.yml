@@ -192,7 +192,13 @@ jobs:
         run: cmake --build build\host --target NebulaVk --config Release
 
     
-
+      - name: Upload smg_game.dll
+        uses: actions/upload-artifact@v4
+        with:
+          name: nebula-smg-game-${{ matrix.config.name }}-${{ github.sha }}
+          path: build\game\smg_game.dll
+          if-no-files-found: error
+          retention-days: 30
       # ---- Game module: build.ps1 now honors LLVM_ROOT / LIBCLANG_PATH / -LlvmRoot ----
       - name: Build game module (smg_game.dll)
         shell: pwsh
@@ -203,13 +209,7 @@ jobs:
           .\native\build.ps1 -Petari native\petari -Build build\game `
             -LlvmRoot "$env:LLVM_ROOT"
 
-      - name: Upload smg_game.dll
-        uses: actions/upload-artifact@v4
-        with:
-          name: nebula-smg-game-${{ matrix.config.name }}-${{ github.sha }}
-          path: build\game\smg_game.dll
-          if-no-files-found: error
-          retention-days: 30
+     
       - name: Build host (NebulaD11 — Direct3D 11)
         if: ${{ matrix.config.d3d11 == 'ON' }}
         run: cmake --build build\host --target NebulaD11 --config Release
