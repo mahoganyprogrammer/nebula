@@ -24,13 +24,24 @@ jobs:
       matrix:
         config:
           - name: d3d12
+            d3d12: 'ON'
             vulkan: 'OFF'
+            d3d11: 'OFF'
             fsr3: 'OFF'
           - name: vulkan
+            d3d12: 'OFF'
             vulkan: 'ON'
+            d3d11: 'OFF'
+            fsr3: 'OFF'
+          - name: d3d11
+            d3d12: 'OFF'
+            vulkan: 'OFF'
+            d3d11: 'ON'
             fsr3: 'OFF'
           - name: d3d12-fsr3
+            d3d12: 'ON'
             vulkan: 'OFF'
+            d3d11: 'OFF'
             fsr3: 'ON'
 
     steps:
@@ -99,14 +110,22 @@ jobs:
             -DCMAKE_C_COMPILER="$clang" `
             -DCMAKE_CXX_COMPILER="$clangxx" `
             -DNEBULA_VULKAN=${{ matrix.config.vulkan }} `
+            -DNEBULA_D3D11=${{ matrix.config.d3d11 }} `
             -DNEBULA_FSR3=${{ matrix.config.fsr3 }}
 
-      - name: Build host (NebulaNative)
-        run: cmake --build build\host --target NebulaNative --config Release
+      # ---- Renderer builds: exactly one runs per matrix leg ----
 
-      - name: Build host (NebulaNativeVk)
-        if: ${{ matrix.config.vulkan == 'ON' && false }}
-        run: cmake --build build\host --target NebulaNativeVk --config Release
+      - name: Build host (Nebula — D3D12)
+        if: ${{ matrix.config.d3d12 == 'ON' }}
+        run: cmake --build build\host --target Nebula --config Release
+
+      - name: Build host (NebulaVk — Vulkan)
+        if: ${{ matrix.config.vulkan == 'ON' }}
+        run: cmake --build build\host --target NebulaVk --config Release
+
+      - name: Build host (NebulaD11 — Direct3D 11)
+        if: ${{ matrix.config.d3d11 == 'ON' }}
+        run: cmake --build build\host --target NebulaD11 --config Release
 
       - name: Build game module (smg_game.dll)
         shell: pwsh
@@ -127,18 +146,29 @@ jobs:
             }
           }
 
+      # ---- Assemble: single step, if/else over the renderer flags ----
+
       - name: Assemble runtime folder
-        if: false
         shell: pwsh
         run: |
           $out = "build\dist-${{ matrix.config.name }}"
           New-Item -ItemType Directory -Force -Path $out | Out-Null
-          Copy-Item build\host\NebulaNative.exe $out -ErrorAction Stop
-          if (Test-Path build\host\NebulaNativeVk.exe) {
-            Copy-Item build\host\NebulaNativeVk.exe $out
+
+          if ('${{ matrix.config.d3d12 }}' -eq 'ON') {
+            $exe = "build\host\Nebula.exe"
+          } elseif ('${{ matrix.config.vulkan }}' -eq 'ON') {
+            $exe = "build\host\NebulaVk.exe"
+          } elseif ('${{ matrix.config.d3d11 }}' -eq 'ON') {
+            $exe = "build\host\NebulaD11.exe"
+          } else {
+            throw "No renderer selected for config '${{ matrix.config.name }}'"
           }
+
+          if (-not (Test-Path $exe)) { throw "Expected renderer exe not found: $exe" }
+          Copy-Item $exe $out -ErrorAction Stop
           Copy-Item build\game\smg_game.dll $out -ErrorAction Stop
           Copy-Item target\release\nebula-import.exe $out -ErrorAction Stop
+
           if (Test-Path "vendor") {
             Copy-Item -Recurse vendor $out
           }
@@ -151,7 +181,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nebula-build-${{ matrix.config.name }}-${{ github.sha }}
-          path: build
+          path: build\dist-${{ matrix.config.name }}
           if-no-files-found: error
           retention-days: 30
 
@@ -173,7 +203,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release | Out-Null
-          Get-ChildItem -Directory artifacts | ForEach-Object {
+          Get-ChildItem -Directory artifacts | Where-Object { $_.Name -like 'nebula-build-*' } | ForEach-Object {
             $name = $_.Name -replace "-$($env:GITHUB_SHA)", ""
             $zip = "release\$name.zip"
             Compress-Archive -Path "$($_.FullName)\*" -DestinationPath $zip -Force
