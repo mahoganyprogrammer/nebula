@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+
 #include <cstring>
 #include <iostream>
 #include <sstream>
@@ -1043,8 +1044,12 @@ void RendererD3D11::bind_constants(unsigned slot, gpu::Address address, bool ver
         }
         return;
     }
-const std::size_t bytes = std::min<std::size_t>({static_cast<std::size_t>(count) * 16u,
-                          static_cast<std::size_t>(at.buffer->size - at.offset), kFl11ConstantBytes});
+    
+    const std::size_t bytes = std::min<std::size_t>(
+        {static_cast<std::size_t>(count) * 16u,
+         static_cast<std::size_t>(at.buffer->size - at.offset),
+         kFl11ConstantBytes});
+    
     D3D11_MAPPED_SUBRESOURCE mapped{};
     ID3D11Buffer* const whole = fl11_constants_.Get();
     if (SUCCEEDED(ctx->Map(whole, 0u, D3D11_MAP_WRITE_DISCARD, 0u, &mapped))) {
@@ -1142,8 +1147,12 @@ void RendererD3D11::flush_draws() {
                     continue;
                 }
                 const d3d11::Context::BufferOffset at = device.resolve(op.a[i]);
-              const std::size_t bytes = std::min<std::size_t>({static_cast<std::size_t>(count) * 16u,
-                          static_cast<std::size_t>(at.buffer->size - at.offset), kFl11ConstantBytes});
+                
+                             const std::size_t bytes = std::min<std::size_t>(
+                    {static_cast<std::size_t>(count[i]) * 16u,
+                     static_cast<std::size_t>(at.buffer->size - at.offset),
+                     kFl11ConstantBytes});
+                
                 D3D11_MAPPED_SUBRESOURCE mapped{};
                 if (SUCCEEDED(ctx->Map(whole[i], 0u, D3D11_MAP_WRITE_DISCARD, 0u, &mapped))) {
                     std::memcpy(mapped.pData, at.buffer->shadow + at.offset, bytes);
