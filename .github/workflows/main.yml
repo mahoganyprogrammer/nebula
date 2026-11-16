@@ -10,7 +10,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  LLVM_VERSION: '19.1.7'
+  LLVM_VERSION: '21.1.0'
   CMAKE_VERSION: '3.30.5'
   NINJA_VERSION: '1.12.1'
   DOTNET_VERSION: '8.0.x'
@@ -23,26 +23,17 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - name: d3d12
-            d3d12: 'ON'
-            vulkan: 'OFF'
-            d3d11: 'OFF'
-            fsr3: 'OFF'
-          - name: vulkan
-            d3d12: 'OFF'
-            vulkan: 'ON'
-            d3d11: 'OFF'
-            fsr3: 'OFF'
+         
           - name: d3d11
             d3d12: 'OFF'
             vulkan: 'OFF'
             d3d11: 'ON'
             fsr3: 'OFF'
-          - name: d3d12-fsr3
-            d3d12: 'ON'
+          - name: d3d12-vulk
+            d3d12: 'OFF'
             vulkan: 'OFF'
             d3d11: 'OFF'
-            fsr3: 'ON'
+            fsr3: 'OFF'
 
     steps:
       - name: Checkout
@@ -81,6 +72,40 @@ jobs:
         with:
           version: ${{ env.NINJA_VERSION }}
 
+      # ---- LLVM 21 for instrument.py (clang_getFullyQualifiedName) ----
+      - name: Set up LLVM ${{ env.LLVM_VERSION }}
+        shell: pwsh
+        run: |
+          $ver = "${{ env.LLVM_VERSION }}"
+          $dir = "C:\Program Files\LLVM-$ver"
+          if (-not (Test-Path "$dir\bin\clang.exe")) {
+            $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$ver/LLVM-$ver-win64.exe"
+            $out = "$env:RUNNER_TEMP\LLVM-$ver-win64.exe"
+            Invoke-WebRequest -Uri $url -OutFile $out
+            Start-Process -FilePath $out -ArgumentList "/S","/D=$dir" -Wait
+          }
+          & "$dir\bin\clang.exe" --version
+          if (-not (Test-Path "$dir\bin\libclang.dll")) { throw "libclang.dll missing from $dir" }
+          "$dir\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      # ---- Prove which LLVM installs exist and which one wins ----
+      - name: Probe LLVM installs
+        shell: pwsh
+        run: |
+          foreach ($p in @(
+            "C:\Program Files\LLVM\bin",
+            "C:\Program Files\LLVM-${{ env.LLVM_VERSION }}\bin",
+            "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\x64\bin"
+          )) {
+            Write-Host "== $p =="
+            if (Test-Path $p) {
+              Get-ChildItem $p -Filter "clang*.exe" -ErrorAction SilentlyContinue |
+                ForEach-Object { Write-Host "  $($_.Name)" }
+              Get-ChildItem $p -Filter "libclang.dll" -ErrorAction SilentlyContinue |
+                ForEach-Object { Write-Host "  $($_.Name) ($($_.Length) bytes)" }
+            } else { Write-Host "  (missing)" }
+          }
+
       - name: Cache CMake dependencies
         uses: actions/cache@v4
         with:
@@ -90,9 +115,11 @@ jobs:
             cmake-deps-${{ matrix.config.name }}-
 
       - name: Build game files (nebula-import)
+        if: false
         run: cargo build --release --locked -p nebula-import
 
       - name: Upload nebula-import artifact
+        if: false
         uses: actions/upload-artifact@v4
         with:
           name: nebula-import-${{ matrix.config.name }}-${{ github.sha }}
@@ -102,9 +129,13 @@ jobs:
 
       - name: Configure host
         shell: pwsh
+        env:
+          LIBCLANG_PATH: "C:\\Program Files\\LLVM-${{ env.LLVM_VERSION }}\\bin"
         run: |
-          $clang = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\x64\bin\clang.exe"
-          $clangxx = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\x64\bin\clang++.exe"
+          $clang   = "C:\Program Files\LLVM-${{ env.LLVM_VERSION }}\bin\clang.exe"
+          $clangxx = "C:\Program Files\LLVM-${{ env.LLVM_VERSION }}\bin\clang++.exe"
+          if (-not (Test-Path $clang))   { throw "clang.exe missing: $clang" }
+          if (-not (Test-Path $clangxx)) { throw "clang++.exe missing: $clangxx" }
           cmake -S . -B build\host -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_C_COMPILER="$clang" `
@@ -112,6 +143,10 @@ jobs:
             -DNEBULA_VULKAN=${{ matrix.config.vulkan }} `
             -DNEBULA_D3D11=${{ matrix.config.d3d11 }} `
             -DNEBULA_FSR3=${{ matrix.config.fsr3 }}
+
+      - name: List generated targets
+        shell: pwsh
+        run: ninja -C build\host -t targets all | Select-String -Pattern '\.exe:'
 
       # ---- Renderer builds: exactly one runs per matrix leg ----
 
@@ -124,26 +159,17 @@ jobs:
         run: cmake --build build\host --target NebulaVk --config Release
 
       - name: Build host (NebulaD11 — Direct3D 11)
-        if: ${{ matrix.config.d3d11 == 'ON' }}
+        if: ${{ matrix.config.d3d11 == 'ON' &&false}}
         run: cmake --build build\host --target NebulaD11 --config Release
-      - name: Set up LLVM 21 (libclang for instrument.py)
-        shell: pwsh
-        run: |
-          $ver = "21.1.0"
-          $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$ver/LLVM-$ver-win64.exe"
-          $out = "$env:RUNNER_TEMP\LLVM-$ver-win64.exe"
-          Invoke-WebRequest -Uri $url -OutFile $out
-          Start-Process -FilePath $out -ArgumentList "/S","/D=C:\Program Files\LLVM-$ver" -Wait
-          & "C:\Program Files\LLVM-$ver\bin\clang.exe" --version
-          if (-not (Test-Path "C:\Program Files\LLVM-$ver\bin\libclang.dll")) {
-            throw "libclang.dll missing from LLVM-$ver"
-          }
+
       - name: Build game module (smg_game.dll)
         shell: pwsh
+        env:
+          CC:  "C:\\Program Files\\LLVM-${{ env.LLVM_VERSION }}\\bin\\clang.exe"
+          CXX: "C:\\Program Files\\LLVM-${{ env.LLVM_VERSION }}\\bin\\clang++.exe"
+          LIBCLANG_PATH: "C:\\Program Files\\LLVM-${{ env.LLVM_VERSION }}\\bin"
         run: .\native\build.ps1 -Petari native\petari -Build build\game
-      - name: Build host (NebulaD11 — Direct3D 11)
-        if: ${{ matrix.config.d3d11 == 'ON' }}
-        run: cmake --build build\host --target NebulaD11 --config Release
+
       - name: Build Setup and launcher (.NET)
         shell: pwsh
         run: |
@@ -159,7 +185,7 @@ jobs:
             }
           }
 
-      # ---- Assemble: single step, if/else over the renderer flags ----
+      # ---- Assemble: single step, if/elseif/else over the renderer flags ----
 
       - name: Assemble runtime folder
         shell: pwsh
@@ -190,11 +216,24 @@ jobs:
             ForEach-Object { Copy-Item $_.FullName $out }
           Get-ChildItem $out | Format-Table Name, Length
 
-      - name: Upload artifacts
+      # ---- Upload: per-config folder ----
+
+      - name: Upload artifacts (${{ matrix.config.name }})
         uses: actions/upload-artifact@v4
         with:
           name: nebula-build-${{ matrix.config.name }}-${{ github.sha }}
           path: build\dist-${{ matrix.config.name }}
+          if-no-files-found: error
+          retention-days: 30
+
+      # ---- Upload: D3D11 exe on its own (requested) ----
+
+      - name: Upload NebulaD11.exe
+        if: ${{ matrix.config.d3d11 == 'ON' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: nebula-d3d11-${{ github.sha }}
+          path: build\host\NebulaD11.exe
           if-no-files-found: error
           retention-days: 30
 
@@ -216,12 +255,14 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release | Out-Null
-          Get-ChildItem -Directory artifacts | Where-Object { $_.Name -like 'nebula-build-*' } | ForEach-Object {
-            $name = $_.Name -replace "-$($env:GITHUB_SHA)", ""
-            $zip = "release\$name.zip"
-            Compress-Archive -Path "$($_.FullName)\*" -DestinationPath $zip -Force
-            Write-Host "Created $zip"
-          }
+          Get-ChildItem -Directory artifacts |
+            Where-Object { $_.Name -like 'nebula-build-*' } |
+            ForEach-Object {
+              $name = $_.Name -replace "-$($env:GITHUB_SHA)", ""
+              $zip  = "release\$name.zip"
+              Compress-Archive -Path "$($_.FullName)\*" -DestinationPath $zip -Force
+              Write-Host "Created $zip"
+            }
           Get-ChildItem release
 
       - name: Upload release archives
