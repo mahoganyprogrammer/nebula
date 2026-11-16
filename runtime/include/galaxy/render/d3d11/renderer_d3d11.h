@@ -462,7 +462,8 @@ private:
     TextureStore* mirrored_store_ = nullptr;
 
     // The swap chain.
-    d3d11::ComPtr<IDXGISwapChain3> swap_chain_;
+    d3d11::ComPtr<IDXGISwapChain> swap_chain_;
+
     HANDLE frame_latency_waitable_ = nullptr;
     d3d11::ComPtr<ID3D11RenderTargetView> backbuffer_rtv_;  // buffer 0 (flip model: always the one drawn next)
     std::uint32_t swap_width_ = 0u, swap_height_ = 0u;
