@@ -270,7 +270,13 @@ bool RendererD3D11::create_swap_chain() {
     scd.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT | (caps.tearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0u);
     tearing_ = caps.tearing;
     d3d11::ComPtr<IDXGISwapChain1> chain;
-    if (FAILED(context.factory()->CreateSwapChainForHwnd(context.device(), window_, &scd, nullptr, nullptr, &chain)) ||
+    IDXGIFactory2* const factory2 = context.factory2();
+if (factory2 == nullptr) {
+    // Windows 7 without the Platform Update: no DXGI 1.2 swap chains.
+    // Either fail here with a message, or fall back to IDXGIFactory1::CreateSwapChain.
+    return false;   // or whatever this function returns on failure
+}
+if (FAILED(factory2->CreateSwapChainForHwnd(context.device(), window_, &scd, nullptr, nullptr, &chain)) ||
         FAILED(chain.As(&swap_chain_))) {
         init_error_ = "the swap chain could not be made";
         std::cerr << "[Renderer] " << init_error_ << '\n';
