@@ -260,6 +260,7 @@ bool RendererD3D11::wants_hdr() const {
 // A flip-model swap chain of kSwapChainBuffers 8-bit buffers at the window's size, a waitable object and a latency of one
 // frame (renderer_d3d12.cpp create_swap_chain), tearing where the system offers it so that VSync off presents at once.
 bool RendererD3D11::create_swap_chain() {
+        std::cerr << "[swap] create_swap_chain entered\n";
     d3d11::Context& context = d3d11::Context::get();
     const d3d11::DeviceCaps& caps = context.caps();
 
@@ -291,7 +292,49 @@ bool RendererD3D11::create_swap_chain() {
         std::cerr << "[Renderer] " << init_error_ << '\n';
         return false;
     }
+    // After the factory2 null check
+    if (factory2 == nullptr) {
+        std::cerr << "[swap] factory2 is null\n";
+        init_error_ = "no DXGI 1.2 factory";
+        return false;
+    }
 
+    d3d11::ComPtr<IDXGISwapChain1> chain;
+    std::cerr << "[swap] attempting flip-model chain (SwapEffect=" << scd.SwapEffect
+              << " BufferCount=" << scd.BufferCount
+              << " Flags=0x" << std::hex << scd.Flags << std::dec << ")\n";
+
+    HRESULT hr = factory2->CreateSwapChainForHwnd(context.device(), window_, &scd, nullptr, nullptr, &chain);
+    if (FAILED(hr)) {
+        std::cerr << "[swap] flip-model failed: 0x" << std::hex << static_cast<unsigned long>(hr) << std::dec << '\n';
+
+        DXGI_SWAP_CHAIN_DESC1 legacy = scd;
+        legacy.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+        legacy.BufferCount = 1;
+        legacy.Scaling = DXGI_SCALING_STRETCH;
+        legacy.Flags = 0;
+        std::cerr << "[swap] attempting legacy chain (SwapEffect=" << legacy.SwapEffect
+                  << " BufferCount=" << legacy.BufferCount << " Flags=0)\n";
+        hr = factory2->CreateSwapChainForHwnd(context.device(), window_, &legacy, nullptr, nullptr, &chain);
+        if (FAILED(hr)) {
+            std::cerr << "[swap] legacy failed: 0x" << std::hex << static_cast<unsigned long>(hr) << std::dec << '\n';
+            init_error_ = "the swap chain could not be made";
+            return false;
+        }
+        tearing_ = false;
+        scd.Flags = 0;
+        std::cerr << "[swap] legacy chain created\n";
+    } else {
+        std::cerr << "[swap] flip-model chain created\n";
+    }
+
+    if (FAILED(chain.As(&swap_chain_))) {
+        std::cerr << "[swap] chain.As(&swap_chain_) failed\n";
+        init_error_ = "the swap chain could not be made";
+        return false;
+    }
+    std::cerr << "[swap] swap_chain_ assigned, MakeWindowAssociation next\n";
+    
     d3d11::ComPtr<IDXGISwapChain1> chain;
 
     // First attempt: the requested flip model with waitable/tearing flags.
