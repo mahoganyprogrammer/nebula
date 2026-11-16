@@ -276,9 +276,7 @@ bool RendererD3D11::create_swap_chain() {
 
     // Waitable object: Windows 8.1+ only.
     scd.Flags = 0u;
-    if (IsWindows8Point1OrGreater()) {
-        scd.Flags |= DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
-    }
+  
     if (caps.flip_model && caps.tearing) {
         scd.Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
     }
