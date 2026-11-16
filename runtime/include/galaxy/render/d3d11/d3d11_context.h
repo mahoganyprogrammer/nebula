@@ -202,8 +202,8 @@ private:
 
     ComPtr<IDXGIFactory2> factory_;
     ComPtr<IDXGIAdapter1> adapter_;
-    ComPtr<ID3D11Device1> device_;
-    ComPtr<ID3D11DeviceContext1> immediate_;
+ComPtr<ID3D11Device> device_;
+ComPtr<ID3D11DeviceContext> immediate_;
     ComPtr<ID3D11Fence> fence_;  // null: event queries
     ComPtr<ID3D11InfoQueue> info_queue_;  // the debug layer's, null without it
     HANDLE fence_event_ = nullptr;
