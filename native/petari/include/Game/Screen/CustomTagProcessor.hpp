@@ -67,21 +67,23 @@ public:
     Operation exeFontGroup(Ui::Rect*, const MessageEditorMessageTag&, ContextType*);
     Operation exePatchimuGroup(Ui::Rect*, const MessageEditorMessageTag&, ContextType*);
 
-    struct Impl {
+   struct Impl {
     struct GroupFunctionInfo {
-    u8 mGroup;
-
-    Ui::TagProcessorBase<char16_t>::Operation
-        (CustomTagProcessor::*mFunction)(
-            Ui::Rect*,
-            const MessageEditorMessageTag&,
-            Ui::TagProcessorBase<char16_t>::ContextType*
-        );
-};
-
-        static GroupFunctionInfo* findGroupFunctionInfo(int);
-        static GroupFunctionInfo sGroupFunctionTable[];
+        u8 mGroup;
+        Ui::TagProcessorBase<char16_t>::Operation
+            (CustomTagProcessor::*mFunction)(
+                Ui::Rect*,
+                const MessageEditorMessageTag&,
+                Ui::TagProcessorBase<char16_t>::ContextType*
+            );
     };
+
+    static CustomTagProcessor::Impl::GroupFunctionInfo*
+        findGroupFunctionInfo(int);
+
+    static CustomTagProcessor::Impl::GroupFunctionInfo
+        sGroupFunctionTable[];
+};
 
     bool mIsShadow;
     bool mIsText;
