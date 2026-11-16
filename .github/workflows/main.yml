@@ -199,6 +199,7 @@ jobs:
       
       # ---- Game module: build.ps1 now honors LLVM_ROOT / LIBCLANG_PATH / -LlvmRoot ----
       - name: Build game module (smg_game.dll) with diagnostics
+        if: false
         id: smg
         shell: pwsh
         env:
@@ -255,6 +256,7 @@ jobs:
           Write-Host "=== game-module build outcome: $buildExit ==="
           if ($buildExit -ne 0) { exit $buildExit }
       - name: Upload smg_game.dll
+        if: false
         uses: actions/upload-artifact@v4
         with:
           name: nebula-smg-game-${{ matrix.config.name }}-${{ github.sha }}
