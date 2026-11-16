@@ -126,11 +126,24 @@ jobs:
       - name: Build host (NebulaD11 — Direct3D 11)
         if: ${{ matrix.config.d3d11 == 'ON' }}
         run: cmake --build build\host --target NebulaD11 --config Release
-
+      - name: Set up LLVM 21 (libclang for instrument.py)
+        shell: pwsh
+        run: |
+          $ver = "21.1.0"
+          $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$ver/LLVM-$ver-win64.exe"
+          $out = "$env:RUNNER_TEMP\LLVM-$ver-win64.exe"
+          Invoke-WebRequest -Uri $url -OutFile $out
+          Start-Process -FilePath $out -ArgumentList "/S","/D=C:\Program Files\LLVM-$ver" -Wait
+          & "C:\Program Files\LLVM-$ver\bin\clang.exe" --version
+          if (-not (Test-Path "C:\Program Files\LLVM-$ver\bin\libclang.dll")) {
+            throw "libclang.dll missing from LLVM-$ver"
+          }
       - name: Build game module (smg_game.dll)
         shell: pwsh
         run: .\native\build.ps1 -Petari native\petari -Build build\game
-
+      - name: Build host (NebulaD11 — Direct3D 11)
+        if: ${{ matrix.config.d3d11 == 'ON' }}
+        run: cmake --build build\host --target NebulaD11 --config Release
       - name: Build Setup and launcher (.NET)
         shell: pwsh
         run: |
