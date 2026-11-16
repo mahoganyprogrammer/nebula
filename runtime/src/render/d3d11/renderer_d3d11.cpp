@@ -260,93 +260,90 @@ bool RendererD3D11::wants_hdr() const {
 // A flip-model swap chain of kSwapChainBuffers 8-bit buffers at the window's size, a waitable object and a latency of one
 // frame (renderer_d3d12.cpp create_swap_chain), tearing where the system offers it so that VSync off presents at once.
 bool RendererD3D11::create_swap_chain() {
-        std::cerr << "[swap] create_swap_chain entered\n";
+    std::cerr << "[swap] create_swap_chain entered\n";
     d3d11::Context& context = d3d11::Context::get();
     const d3d11::DeviceCaps& caps = context.caps();
 
     DXGI_SWAP_CHAIN_DESC1 scd{};
-    scd.BufferCount = kSwapChainBuffers;
     scd.Width = std::max(host_window::backbuffer_width, 1u);
     scd.Height = std::max(host_window::backbuffer_height, 1u);
     scd.Format = swap_format_;
     scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-// Windows 7 and pre-flip-model systems need the bitblt effect.
-
-    scd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-    scd.BufferCount = 1;
- 
     scd.SampleDesc.Count = 1;
     scd.Scaling = DXGI_SCALING_STRETCH;
     scd.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
-
-    // Waitable object: Windows 8.1+ only.
+    if (caps.flip_model) {
+        scd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+        scd.BufferCount = kSwapChainBuffers;
+    } else {
+        scd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+        scd.BufferCount = 1;
+    }
     scd.Flags = 0u;
-  
-    if (caps.flip_model && caps.tearing) {
-        scd.Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+    if (caps.flip_model) {
+        scd.Flags |= DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+        if (caps.tearing) {
+            scd.Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+        }
     }
 
     IDXGIFactory2* const factory2 = context.factory2();
     if (factory2 == nullptr) {
-        init_error_ = "no DXGI 1.2 factory (Platform Update for Windows 7 not installed)";
+        init_error_ = "no DXGI 1.2 factory";
         std::cerr << "[Renderer] " << init_error_ << '\n';
         return false;
     }
-    
-    d3d11::ComPtr<IDXGISwapChain1> chain;
 
-    // First attempt: the requested flip model with waitable/tearing flags.
-            std::cerr << "[Renderer] 1st attempt"  << '\n';
+    d3d11::ComPtr<IDXGISwapChain1> chain;
+    std::cerr << "[swap] attempt 1 (SwapEffect=" << scd.SwapEffect
+              << " BufferCount=" << scd.BufferCount
+              << " Flags=0x" << std::hex << scd.Flags << std::dec << ")\n";
 
     HRESULT hr = factory2->CreateSwapChainForHwnd(context.device(), window_, &scd, nullptr, nullptr, &chain);
     if (FAILED(hr)) {
-        std::cerr << "[Renderer] CreateSwapChainForHwnd failed: 0x" << std::hex
-                  << static_cast<unsigned long>(hr) << std::dec
-                  << " (flip_model=" << caps.flip_model
-                  << " tearing=" << caps.tearing << ")\n";
-
-        // Fallback: the legacy bitblt swap effect, for Windows 7 and for drivers
-        // that reject the flip-model flag combination.
+        std::cerr << "[swap] attempt 1 failed: 0x" << std::hex
+                  << static_cast<unsigned long>(hr) << std::dec << '\n';
         DXGI_SWAP_CHAIN_DESC1 legacy = scd;
         legacy.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
         legacy.BufferCount = 1;
         legacy.Scaling = DXGI_SCALING_STRETCH;
         legacy.Flags = 0;
+        std::cerr << "[swap] attempt 2 (legacy bitblt, SwapEffect=" << legacy.SwapEffect
+                  << " BufferCount=" << legacy.BufferCount << " Flags=0)\n";
         hr = factory2->CreateSwapChainForHwnd(context.device(), window_, &legacy, nullptr, nullptr, &chain);
         if (FAILED(hr)) {
-            std::cerr << "[Renderer] legacy CreateSwapChainForHwnd failed: 0x" << std::hex
+            std::cerr << "[swap] attempt 2 failed: 0x" << std::hex
                       << static_cast<unsigned long>(hr) << std::dec << '\n';
-            init_error_ = "the swap chain could not be made 319";
+            init_error_ = "the swap chain could not be made";
             return false;
         }
-        tearing_ = false;                       // bitblt cannot tear
-        scd.Flags = 0;                          // record the flags we actually used
-        std::cerr << "[present] falling back to the bitblt swap effect\n";
+        scd = legacy;
+        tearing_ = false;
+        std::cerr << "[swap] legacy bitblt chain created\n";
     } else {
         tearing_ = caps.tearing && (scd.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) != 0u;
+        std::cerr << "[swap] flip-model chain created\n";
     }
 
-    if (FAILED(chain.As(&swap_chain_))) {
-        init_error_ = "the swap chain could not be made 330";
-        std::cerr << "[Renderer] " << init_error_ << '\n';
+    // On Windows 7 with the Platform Update, CreateSwapChainForHwnd returns a DXGI 1.0
+    // IDXGISwapChain that is not necessarily an IDXGISwapChain1, so store the base
+    // interface and use the 1.3 extras only when the object actually supports them.
+    swap_chain_ = chain;
+    if (!swap_chain_) {
+        std::cerr << "[swap] swap chain assignment failed\n";
+        init_error_ = "the swap chain could not be made";
         return false;
     }
+
     context.factory()->MakeWindowAssociation(window_, DXGI_MWA_NO_ALT_ENTER);
 
-    if (FAILED(swap_chain_->SetMaximumFrameLatency(1u))) {
-        std::cerr << "[present] SetMaximumFrameLatency failed\n";
-    }
-    frame_latency_waitable_ = swap_chain_->GetFrameLatencyWaitableObject();
-
     {
-        static int logged_tearing = -1;
-        if (logged_tearing != (tearing_ ? 1 : 0)) {
-            logged_tearing = tearing_ ? 1 : 0;
-            std::cerr << "[present] swap chain (flip=" << (caps.flip_model ? 1 : 0)
-                      << "), "
-                      << (tearing_ ? "VSync off presents with ALLOW_TEARING (no wait for the display)"
-                                   : "VSync off still waits for the compositor (tearing not offered here)")
-                      << ", VSync on: Present(1..4) paced by the latency object" << '\n';
+        d3d11::ComPtr<IDXGISwapChain2> chain2;
+        if (SUCCEEDED(swap_chain_.As(&chain2))) {
+            (void)chain2->SetMaximumFrameLatency(1u);
+            frame_latency_waitable_ = chain2->GetFrameLatencyWaitableObject();
+        } else {
+            frame_latency_waitable_ = nullptr;
         }
     }
 
@@ -361,11 +358,11 @@ bool RendererD3D11::create_swap_chain() {
         std::cerr << "[Renderer] " << init_error_ << '\n';
         return false;
     }
-
     swap_dirty_ = false;
+    std::cerr << "[swap] swap chain ready, width=" << swap_width_ << " height=" << swap_height_
+              << " tearing=" << (tearing_ ? 1 : 0) << '\n';
     return true;
 }
-
 
 bool RendererD3D11::resize_swap_chain(std::uint32_t width, std::uint32_t height) {
     if (!swap_chain_) {
