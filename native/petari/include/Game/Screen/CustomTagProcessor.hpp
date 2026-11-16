@@ -30,6 +30,12 @@ public:
 
 class CustomTagProcessor : public MessageTagSkipTagProcessor {
 public:
+    using Operation =
+        Ui::TagProcessorBase<char16_t>::Operation;
+
+    using ContextType =
+        Ui::TagProcessorBase<char16_t>::ContextType;
+
     CustomTagProcessor(Ui::TextBox*);
 
     virtual ~CustomTagProcessor();
