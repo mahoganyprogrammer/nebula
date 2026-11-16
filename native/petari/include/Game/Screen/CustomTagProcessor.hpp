@@ -87,10 +87,4 @@ public:
     f32 mFontWidth;
     f32 mFontHeight;
 };
-
-// tools/lumacore/gen_types.py row anchors: force rows for types the walker misses because they are
-// used only in member-pointer signatures and an array inside CustomTagProcessor::Impl. These aliases
-// are never used by game code; they exist so gen_types.py's `unnamed()` check finds the names.
-using _LumaRowCustomTagOperation     = Operation;
-using _LumaRowCustomTagContextType   = ContextType;
-using _LumaRowCustomTagGroupFuncInfo = CustomTagProcessor::Impl::GroupFunctionInfo;
+struct _LumaRowAnchorCustomTag { CustomTagProcessor::Impl::GroupFunctionInfo groupInfo; CustomTagProcessor::Operation operation; CustomTagProcessor::ContextType context; };
