@@ -150,7 +150,8 @@ public:
     [[nodiscard]] ID3D11DeviceContext* immediate() const noexcept { return immediate_.Get(); }
 [[nodiscard]] ID3D11Device1* device1() const noexcept { return device1_.Get(); }
     [[nodiscard]] ID3D11DeviceContext1* immediate1() const noexcept { return immediate1_.Get(); }
-    [[nodiscard]] IDXGIFactory2* factory() const noexcept { return factory_.Get(); }
+[[nodiscard]] IDXGIFactory1* factory() const noexcept { return factory_.Get(); }
+[[nodiscard]] IDXGIFactory2* factory2() const noexcept { return factory2_.Get(); }
     [[nodiscard]] IDXGIAdapter1* adapter() const noexcept { return adapter_.Get(); }
     [[nodiscard]] const DeviceCaps& caps() const noexcept { return caps_; }
     [[nodiscard]] const std::string& device_name() const noexcept { return device_name_; }
@@ -202,7 +203,8 @@ private:
     friend struct Buffer;  // its destructor leaves the upload list
     [[nodiscard]] std::uint64_t register_address(Buffer* buffer);
 
-    ComPtr<IDXGIFactory2> factory_;
+  ComPtr<IDXGIFactory1> factory_;     // always valid after initialize
+ComPtr<IDXGIFactory2> factory2_;    // null on Windows 7 without the Platform U
     ComPtr<IDXGIAdapter1> adapter_;
 
 ComPtr<ID3D11Device> device_;
