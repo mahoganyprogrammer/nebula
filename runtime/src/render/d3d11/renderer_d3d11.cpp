@@ -299,34 +299,8 @@ bool RendererD3D11::create_swap_chain() {
         return false;
     }
 
-   if (FAILED(hr)) {
-        std::cerr << "[swap] flip-model failed: 0x" << std::hex << static_cast<unsigned long>(hr) << std::dec << '\n';
-
-        DXGI_SWAP_CHAIN_DESC1 legacy = scd;
-        legacy.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-        legacy.BufferCount = 1;
-        legacy.Scaling = DXGI_SCALING_STRETCH;
-        legacy.Flags = 0;
-        std::cerr << "[swap] attempting legacy chain (SwapEffect=" << legacy.SwapEffect
-                  << " BufferCount=" << legacy.BufferCount << " Flags=0)\n";
-        hr = factory2->CreateSwapChainForHwnd(context.device(), window_, &legacy, nullptr, nullptr, &chain);
-        if (FAILED(hr)) {
-            std::cerr << "[swap] legacy failed: 0x" << std::hex << static_cast<unsigned long>(hr) << std::dec << '\n';
-            init_error_ = "the swap chain could not be made";
-            return false;
-        }
-        tearing_ = false;
-        scd.Flags = 0;
-        std::cerr << "[swap] legacy chain created\n";
-    } else {
-        std::cerr << "[swap] flip-model chain created\n";
-    }
-
-    if (FAILED(chain.As(&swap_chain_))) {
-        std::cerr << "[swap] chain.As(&swap_chain_) failed\n";
-        init_error_ = "the swap chain could not be made";
-        return false;
-    }
+ 
+ 
     std::cerr << "[swap] swap_chain_ assigned, MakeWindowAssociation next\n";
     
     d3d11::ComPtr<IDXGISwapChain1> chain;
