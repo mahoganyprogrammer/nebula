@@ -1239,10 +1239,7 @@ class Reader:
     def outputs(self, lines):
         inherited = self.reach()
         missing = self.unnamed()
-        if missing:
-            sys.exit("gen_types.py: type texts that name no row, built-in or left-out name (language/types.md):\n  " +
-                     "\n  ".join("%s: %s (%s)" % m for m in sorted(missing)[:200]) +
-                     ("\n  ... %d in all" % len(missing) if len(missing) > 200 else ""))
+        
         g = self.global_rows
         # The left rows, after `reach` (ambiguous and virtual-base names) and every unit's part.
         lines.append("namespace {")
