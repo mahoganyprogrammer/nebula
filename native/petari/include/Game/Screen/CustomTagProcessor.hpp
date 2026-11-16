@@ -62,10 +62,16 @@ public:
     Operation exePatchimuGroup(Ui::Rect*, const MessageEditorMessageTag&, ContextType*);
 
     struct Impl {
-        struct GroupFunctionInfo {
-            u8 mGroup;
-            Operation (CustomTagProcessor::*mFunction)(Ui::Rect*, const MessageEditorMessageTag&, ContextType*);
-        };
+    struct GroupFunctionInfo {
+    u8 mGroup;
+
+    Ui::TagProcessorBase<char16_t>::Operation
+        (CustomTagProcessor::*mFunction)(
+            Ui::Rect*,
+            const MessageEditorMessageTag&,
+            Ui::TagProcessorBase<char16_t>::ContextType*
+        );
+};
 
         static GroupFunctionInfo* findGroupFunctionInfo(int);
         static GroupFunctionInfo sGroupFunctionTable[];
