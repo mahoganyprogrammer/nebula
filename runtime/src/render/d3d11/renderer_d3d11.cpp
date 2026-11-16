@@ -12,7 +12,7 @@
 #include "galaxy/render/texture_store.h"
 
 #include "sm50/utility_shaders_dxbc.h"
-
+#include <comdef.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
