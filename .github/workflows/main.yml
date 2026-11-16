@@ -286,6 +286,7 @@ jobs:
       # ---- Assemble: single step, if/elseif/else over the renderer flags ----
 
       - name: Assemble runtime folder
+        if: false
         shell: pwsh
         run: |
           $out = "build\dist-${{ matrix.config.name }}"
