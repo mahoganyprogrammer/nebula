@@ -23,13 +23,12 @@ jobs:
       fail-fast: false
       matrix:
         config:
-         
           - name: d3d11
             d3d12: 'OFF'
             vulkan: 'OFF'
             d3d11: 'ON'
             fsr3: 'OFF'
-          - name: d3d12-vulk
+          - name: vulk
             d3d12: 'OFF'
             vulkan: 'OFF'
             d3d11: 'OFF'
@@ -72,7 +71,7 @@ jobs:
         with:
           version: ${{ env.NINJA_VERSION }}
 
-      # ---- LLVM 21 for instrument.py (clang_getFullyQualifiedName) ----
+      # ---- LLVM 21 for both the host (libclang for instrument.py) and the game module (clang++.exe) ----
       - name: Set up LLVM ${{ env.LLVM_VERSION }}
         shell: pwsh
         run: |
@@ -84,11 +83,12 @@ jobs:
             Invoke-WebRequest -Uri $url -OutFile $out
             Start-Process -FilePath $out -ArgumentList "/S","/D=$dir" -Wait
           }
-          & "$dir\bin\clang.exe" --version
-          if (-not (Test-Path "$dir\bin\libclang.dll")) { throw "libclang.dll missing from $dir" }
+          & "$dir\bin\clang.exe" --version | Select-Object -First 1
+          foreach ($f in @("clang.exe","clang++.exe","libclang.dll","llvm-rc.exe")) {
+            if (-not (Test-Path "$dir\bin\$f")) { throw "LLVM install incomplete: missing $dir\bin\$f" }
+          }
           "$dir\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-      # ---- Prove which LLVM installs exist and which one wins ----
       - name: Probe LLVM installs
         shell: pwsh
         run: |
@@ -115,11 +115,9 @@ jobs:
             cmake-deps-${{ matrix.config.name }}-
 
       - name: Build game files (nebula-import)
-        if: false
         run: cargo build --release --locked -p nebula-import
 
       - name: Upload nebula-import artifact
-        if: false
         uses: actions/upload-artifact@v4
         with:
           name: nebula-import-${{ matrix.config.name }}-${{ github.sha }}
@@ -151,25 +149,36 @@ jobs:
       # ---- Renderer builds: exactly one runs per matrix leg ----
 
       - name: Build host (Nebula — D3D12)
-        if: ${{ matrix.config.d3d12 == 'ON' &&false}}
+        if: ${{ matrix.config.d3d12 == 'ON' }}
         run: cmake --build build\host --target Nebula --config Release
 
       - name: Build host (NebulaVk — Vulkan)
-        if: ${{ matrix.config.vulkan == 'ON'  &&false}}
+        if: ${{ matrix.config.vulkan == 'ON' }}
         run: cmake --build build\host --target NebulaVk --config Release
 
-      - name: Build host (NebulaD11 — Direct3D 11)
-        if: ${{ matrix.config.d3d11 == 'ON' &&false}}
-        run: cmake --build build\host --target NebulaD11 --config Release
+    
 
+      # ---- Game module: build.ps1 now honors LLVM_ROOT / LIBCLANG_PATH / -LlvmRoot ----
       - name: Build game module (smg_game.dll)
         shell: pwsh
         env:
-          CC:  "C:\\Program Files\\LLVM-${{ env.LLVM_VERSION }}\\bin\\clang.exe"
-          CXX: "C:\\Program Files\\LLVM-${{ env.LLVM_VERSION }}\\bin\\clang++.exe"
+          LLVM_ROOT: "C:\\Program Files\\LLVM-${{ env.LLVM_VERSION }}"
           LIBCLANG_PATH: "C:\\Program Files\\LLVM-${{ env.LLVM_VERSION }}\\bin"
-        run: .\native\build.ps1 -Petari native\petari -Build build\game
+        run: |
+          .\native\build.ps1 -Petari native\petari -Build build\game `
+            -LlvmRoot "$env:LLVM_ROOT"
 
+      - name: Upload smg_game.dll
+        uses: actions/upload-artifact@v4
+        with:
+          name: nebula-smg-game-${{ matrix.config.name }}-${{ github.sha }}
+          path: build\game\smg_game.dll
+          if-no-files-found: error
+          retention-days: 30
+      - name: Build host (NebulaD11 — Direct3D 11)
+        if: ${{ matrix.config.d3d11 == 'ON' }}
+        run: cmake --build build\host --target NebulaD11 --config Release
+        
       - name: Build Setup and launcher (.NET)
         shell: pwsh
         run: |
@@ -226,7 +235,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # ---- Upload: D3D11 exe on its own (requested) ----
+      # ---- Upload: D3D11 exe on its own ----
 
       - name: Upload NebulaD11.exe
         if: ${{ matrix.config.d3d11 == 'ON' }}
