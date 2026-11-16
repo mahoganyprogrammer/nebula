@@ -154,6 +154,9 @@ bool Context::initialize(const std::string& chosen_gpu, bool debug_layer) {
         device_ = device;
         immediate_ = context;
         device_name_ = name;
+                device1_ = device1;
+        immediate1_ = context1;
+        
         caps_ = DeviceCaps{};
         caps_.level = level;
         caps_.vendor = desc.VendorId;
@@ -231,6 +234,8 @@ void Context::shutdown() noexcept {
     }
     immediate_.Reset();
     device_.Reset();
+        immediate1_.Reset();
+    device1_.Reset();
     adapter_.Reset();
     factory_.Reset();
     submitted_ = completed_ = 0u;
