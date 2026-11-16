@@ -202,6 +202,7 @@ private:
 
     ComPtr<IDXGIFactory2> factory_;
     ComPtr<IDXGIAdapter1> adapter_;
+
 ComPtr<ID3D11Device> device_;
 ComPtr<ID3D11DeviceContext> immediate_;
     ComPtr<ID3D11Fence> fence_;  // null: event queries
