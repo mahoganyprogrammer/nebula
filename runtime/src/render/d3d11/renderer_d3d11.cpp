@@ -1115,12 +1115,11 @@ void RendererD3D11::flush_draws() {
                 buffers[i] = count[i] != 0u ? at.buffer->bound(d3d11::BufferUse::Constants) : nullptr;
                 first[i] = static_cast<UINT>(at.offset / 16u);
             }
-            if (d3d11::Context::get().caps().constant_buffer_offsetting) {
-                ctx->VSSetConstantBuffers1(1u, 2u, buffers, first, count);
-                ctx->PSSetConstantBuffers1(1u, 2u, buffers, first, count);
-                break;
-            }
-            // Feature level 11_0: copy each window into its own whole buffer, bind both from byte 0.
+                          
+    //        if (d3d11::Context::get().caps().constant_buffer_offsetting) {                ctx->VSSetConstantBuffers1(1u, 2u, buffers, first, count);                ctx->PSSetConstantBuffers1(1u, 2u, buffers, first, count);
+      //          break;            }
+            
+                          // Feature level 11_0: copy each window into its own whole buffer, bind both from byte 0.
             ID3D11Buffer* whole[2] = {fl11_constants_b1_.Get(), fl11_constants_b2_.Get()};
             for (unsigned i = 0; i < 2u; ++i) {
                 if (buffers[i] == nullptr) {
