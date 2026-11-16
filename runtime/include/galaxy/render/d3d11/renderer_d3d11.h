@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+g// SPDX-License-Identifier: GPL-3.0-only
 // The renderer on Direct3D 11 (feature level 11_0 and up), with the interface RenderCore uses on RendererD3D12,
 // RendererVk and RendererMtl. The executable NebulaD11 is built with it (NEBULA_GPU_D3D11); the Direct3D 12
 // executable starts it when no adapter passes its probe (renderer_d3d12.cpp try_adapter) or the settings ask for it.
@@ -487,6 +487,13 @@ private:
     d3d11::ComPtr<ID3D11SamplerState> point_clamp_;
     d3d11::ComPtr<ID3D11Buffer> root_constants_;     // b3: the draw's DrawRoot, written per change (dynamic)
     d3d11::ComPtr<ID3D11Buffer> utility_constants_;  // the renderer's own draws' b0 (dynamic)
+
+    // Feature level 11_0 has no constant-buffer offset binding (VSSetConstantBuffers1).
+    // Draws copy their constants here and bind from byte 0 instead.
+    d3d11::ComPtr<ID3D11Buffer> fl11_constants_;     // b0 (View)
+    d3d11::ComPtr<ID3D11Buffer> fl11_constants_b1_;  // b1 (Material)
+    d3d11::ComPtr<ID3D11Buffer> fl11_constants_b2_;  // b2 (Material)
+
     std::array<d3d11::ComPtr<ID3D11PixelShader>, static_cast<std::size_t>(Utility::Count)> utility_ps_{};
     d3d11::ComPtr<ID3D11VertexShader> full_screen_vs_;
     d3d11::ComPtr<ID3D11ComputeShader> probe_cs_;
