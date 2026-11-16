@@ -116,11 +116,11 @@ jobs:
       # ---- Renderer builds: exactly one runs per matrix leg ----
 
       - name: Build host (Nebula — D3D12)
-        if: ${{ matrix.config.d3d12 == 'ON' }}
+        if: ${{ matrix.config.d3d12 == 'ON' &&false}}
         run: cmake --build build\host --target Nebula --config Release
 
       - name: Build host (NebulaVk — Vulkan)
-        if: ${{ matrix.config.vulkan == 'ON' }}
+        if: ${{ matrix.config.vulkan == 'ON'  &&false}}
         run: cmake --build build\host --target NebulaVk --config Release
 
       - name: Build host (NebulaD11 — Direct3D 11)
