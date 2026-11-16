@@ -269,6 +269,7 @@ jobs:
         run: cmake --build build\host --target NebulaD11 --config Release
         
       - name: Build Setup and launcher (.NET)
+        if: false
         shell: pwsh
         run: |
           $projects = @("setup\Setup.csproj", "launcher\Launcher.csproj")
@@ -318,6 +319,7 @@ jobs:
       # ---- Upload: per-config folder ----
 
       - name: Upload artifacts (${{ matrix.config.name }})
+        if: false
         uses: actions/upload-artifact@v4
         with:
           name: nebula-build-${{ matrix.config.name }}-${{ github.sha }}
@@ -331,7 +333,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nebula-build-host-${{ github.sha }}
-          path: build\host\
+          path: build\
           if-no-files-found: error
           retention-days: 30
       # ---- Upload: D3D11 exe on its own ----
