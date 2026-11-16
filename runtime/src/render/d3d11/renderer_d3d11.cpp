@@ -35,6 +35,7 @@ constexpr SamplerKey kDefaultSamplerKey{1u | (1u << 2u) | (1u << 4u) | (5u << 5u
 // A constant buffer's window at `offset` (16-byte constants, 256-byte steps): as much of the buffer as a shader can see.
 UINT constants_in(std::uint64_t size, std::uint64_t offset) noexcept {
     const std::uint64_t left = size > offset ? (size - offset) / 16u : 0u;
+    constexpr std::size_t kFl11ConstantBytes = 4096;
     return static_cast<UINT>(std::min<std::uint64_t>(D3D11_REQ_CONSTANT_BUFFER_ELEMENT_COUNT, left & ~std::uint64_t{15}));
 }
 
@@ -1042,9 +1043,8 @@ void RendererD3D11::bind_constants(unsigned slot, gpu::Address address, bool ver
         }
         return;
     }
-    const std::size_t bytes = std::min<std::size_t>(
-        static_cast<std::size_t>(count) * 16u,
-        static_cast<std::size_t>(at.buffer->size - at.offset));
+const std::size_t bytes = std::min<std::size_t>({static_cast<std::size_t>(count) * 16u,
+                          static_cast<std::size_t>(at.buffer->size - at.offset), kFl11ConstantBytes});
     D3D11_MAPPED_SUBRESOURCE mapped{};
     ID3D11Buffer* const whole = fl11_constants_.Get();
     if (SUCCEEDED(ctx->Map(whole, 0u, D3D11_MAP_WRITE_DISCARD, 0u, &mapped))) {
@@ -1082,6 +1082,7 @@ void RendererD3D11::flush_draws() {
     scene_.color_dirty |= scene_.samples > 1u;
     ID3D11DeviceContext1* const ctx = context();
     ID3D11Buffer* const root = root_constants_.Get();
+        std::uint64_t last_view = ~0ull, last_b1 = ~0ull, last_b2 = ~0ull;
     ctx->VSSetConstantBuffers(3u, 1u, &root);
     ctx->PSSetConstantBuffers(3u, 1u, &root);
     D3D11_PRIMITIVE_TOPOLOGY topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
@@ -1104,10 +1105,18 @@ void RendererD3D11::flush_draws() {
             }
             break;
         }
-        case gpu::DrawOp::Kind::View:
-            bind_constants(0u, op.a[0], true, true);
+       case gpu::DrawOp::Kind::View:
+            if (op.a[0] != last_view) {
+                last_view = op.a[0];
+                bind_constants(0u, op.a[0], true, true);
+            }
             break;
-                      case gpu::DrawOp::Kind::Material: {
+        case gpu::DrawOp::Kind::Material: {
+            if (op.a[0] == last_b1 && op.a[1] == last_b2) {
+                break;
+            }
+            last_b1 = op.a[0];
+            last_b2 = op.a[1];
             // b1 the vertex stage's material, b2 the pixel stage's (a written program's both stages read b2).
             ID3D11Buffer* buffers[2] = {};
             UINT first[2] = {};
@@ -1133,9 +1142,8 @@ void RendererD3D11::flush_draws() {
                     continue;
                 }
                 const d3d11::Context::BufferOffset at = device.resolve(op.a[i]);
-                const std::size_t bytes = std::min<std::size_t>(
-                    static_cast<std::size_t>(count[i]) * 16u,
-                    static_cast<std::size_t>(at.buffer->size - at.offset));
+              const std::size_t bytes = std::min<std::size_t>({static_cast<std::size_t>(count) * 16u,
+                          static_cast<std::size_t>(at.buffer->size - at.offset), kFl11ConstantBytes});
                 D3D11_MAPPED_SUBRESOURCE mapped{};
                 if (SUCCEEDED(ctx->Map(whole[i], 0u, D3D11_MAP_WRITE_DISCARD, 0u, &mapped))) {
                     std::memcpy(mapped.pData, at.buffer->shadow + at.offset, bytes);
