@@ -269,7 +269,11 @@ bool RendererD3D11::create_swap_chain() {
     scd.Height = std::max(host_window::backbuffer_height, 1u);
     scd.Format = swap_format_;
     scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    scd.SwapEffect = caps.flip_model ? DXGI_SWAP_EFFECT_FLIP_DISCARD : DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+// Windows 7 and pre-flip-model systems need the bitblt effect.
+
+    scd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+    scd.BufferCount = 1;
+ 
     scd.SampleDesc.Count = 1;
     scd.Scaling = DXGI_SCALING_STRETCH;
     scd.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
