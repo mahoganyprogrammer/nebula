@@ -174,7 +174,12 @@ bool RendererD3D11::create_states() {
     check(device->CreateBuffer(&constants, nullptr, &root_constants_), "draw constants");
     constants.ByteWidth = 256u;
     check(device->CreateBuffer(&constants, nullptr, &utility_constants_), "utility constants");
-
+    // The feature-level-11_0 constant buffers (whole-buffer binds, see bind_constants).
+    constants.ByteWidth = 64u * 1024u;  // D3D11_REQ_CONSTANT_BUFFER_ELEMENT_COUNT * 16
+    check(device->CreateBuffer(&constants, nullptr, &fl11_constants_), "fl11 constants b0");
+    check(device->CreateBuffer(&constants, nullptr, &fl11_constants_b1_), "fl11 constants b1");
+    check(device->CreateBuffer(&constants, nullptr, &fl11_constants_b2_), "fl11 constants b2");
+    
     check(device->CreateVertexShader(g_utility_BlitVs, sizeof(g_utility_BlitVs), nullptr, &full_screen_vs_), "full-screen vertex shader");
     const struct {
         Utility which;
@@ -1004,7 +1009,6 @@ void RendererD3D11::log_video_memory(const VideoMemoryOutside& outside) {
 void RendererD3D11::reset_draw_bindings() noexcept {
     encoder_.reset();
 }
-
 void RendererD3D11::bind_constants(unsigned slot, gpu::Address address, bool vertex, bool pixel) {
     const d3d11::Context::BufferOffset at = d3d11::Context::get().resolve(address);
     ID3D11Buffer* buffer = at.buffer != nullptr ? at.buffer->bound(d3d11::BufferUse::Constants) : nullptr;
@@ -1014,11 +1018,40 @@ void RendererD3D11::bind_constants(unsigned slot, gpu::Address address, bool ver
         buffer = nullptr;
     }
     ID3D11DeviceContext1* const ctx = context();
+    if (d3d11::Context::get().caps().constant_buffer_offsetting) {
+        // Feature level 11_1: the shared ring is bound at an offset.
+        if (vertex) {
+            ctx->VSSetConstantBuffers1(slot, 1u, &buffer, &first, &count);
+        }
+        if (pixel) {
+            ctx->PSSetConstantBuffers1(slot, 1u, &buffer, &first, &count);
+        }
+        return;
+    }
+    // Feature level 11_0: copy the draw's window into a dynamic buffer and bind from byte 0.
+    if (buffer == nullptr) {
+        if (vertex) {
+            ctx->VSSetConstantBuffers(slot, 1u, &buffer);
+        }
+        if (pixel) {
+            ctx->PSSetConstantBuffers(slot, 1u, &buffer);
+        }
+        return;
+    }
+    const std::size_t bytes = std::min<std::size_t>(
+        static_cast<std::size_t>(count) * 16u,
+        static_cast<std::size_t>(at.buffer->size - at.offset));
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    ID3D11Buffer* const whole = fl11_constants_.Get();
+    if (SUCCEEDED(ctx->Map(whole, 0u, D3D11_MAP_WRITE_DISCARD, 0u, &mapped))) {
+        std::memcpy(mapped.pData, at.buffer->shadow + at.offset, bytes);
+        ctx->Unmap(whole, 0u);
+    }
     if (vertex) {
-        ctx->VSSetConstantBuffers1(slot, 1u, &buffer, &first, &count);
+        ctx->VSSetConstantBuffers(slot, 1u, &whole);
     }
     if (pixel) {
-        ctx->PSSetConstantBuffers1(slot, 1u, &buffer, &first, &count);
+        ctx->PSSetConstantBuffers(slot, 1u, &whole);
     }
 }
 
@@ -1070,7 +1103,7 @@ void RendererD3D11::flush_draws() {
         case gpu::DrawOp::Kind::View:
             bind_constants(0u, op.a[0], true, true);
             break;
-        case gpu::DrawOp::Kind::Material: {
+                      case gpu::DrawOp::Kind::Material: {
             // b1 the vertex stage's material, b2 the pixel stage's (a written program's both stages read b2).
             ID3D11Buffer* buffers[2] = {};
             UINT first[2] = {};
@@ -1081,8 +1114,30 @@ void RendererD3D11::flush_draws() {
                 buffers[i] = count[i] != 0u ? at.buffer->bound(d3d11::BufferUse::Constants) : nullptr;
                 first[i] = static_cast<UINT>(at.offset / 16u);
             }
-            ctx->VSSetConstantBuffers1(1u, 2u, buffers, first, count);
-            ctx->PSSetConstantBuffers1(1u, 2u, buffers, first, count);
+            if (d3d11::Context::get().caps().constant_buffer_offsetting) {
+                ctx->VSSetConstantBuffers1(1u, 2u, buffers, first, count);
+                ctx->PSSetConstantBuffers1(1u, 2u, buffers, first, count);
+                break;
+            }
+            // Feature level 11_0: copy each window into its own whole buffer, bind both from byte 0.
+            ID3D11Buffer* whole[2] = {fl11_constants_b1_.Get(), fl11_constants_b2_.Get()};
+            for (unsigned i = 0; i < 2u; ++i) {
+                if (buffers[i] == nullptr) {
+                    whole[i] = nullptr;
+                    continue;
+                }
+                const d3d11::Context::BufferOffset at = device.resolve(op.a[i]);
+                const std::size_t bytes = std::min<std::size_t>(
+                    static_cast<std::size_t>(count[i]) * 16u,
+                    static_cast<std::size_t>(at.buffer->size - at.offset));
+                D3D11_MAPPED_SUBRESOURCE mapped{};
+                if (SUCCEEDED(ctx->Map(whole[i], 0u, D3D11_MAP_WRITE_DISCARD, 0u, &mapped))) {
+                    std::memcpy(mapped.pData, at.buffer->shadow + at.offset, bytes);
+                    ctx->Unmap(whole[i], 0u);
+                }
+            }
+            ctx->VSSetConstantBuffers(1u, 2u, whole);
+            ctx->PSSetConstantBuffers(1u, 2u, whole);
             break;
         }
         case gpu::DrawOp::Kind::Root: {
