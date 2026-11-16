@@ -146,8 +146,8 @@ public:
     [[nodiscard]] bool ready() const noexcept { return device_ != nullptr; }
     [[nodiscard]] const std::string& failure() const noexcept { return failure_; }
 
-    [[nodiscard]] ID3D11Device1* device() const noexcept { return device_.Get(); }
-    [[nodiscard]] ID3D11DeviceContext1* immediate() const noexcept { return immediate_.Get(); }
+    [[nodiscard]] ID3D11Device* device() const noexcept { return device_.Get(); }
+    [[nodiscard]] ID3D11DeviceContext* immediate() const noexcept { return immediate_.Get(); }
     [[nodiscard]] IDXGIFactory2* factory() const noexcept { return factory_.Get(); }
     [[nodiscard]] IDXGIAdapter1* adapter() const noexcept { return adapter_.Get(); }
     [[nodiscard]] const DeviceCaps& caps() const noexcept { return caps_; }
