@@ -146,7 +146,7 @@ bool Context::initialize(const std::string& chosen_gpu, bool debug_layer) {
             D3D11_FEATURE_DATA_D3D11_OPTIONS options{};
             if (SUCCEEDED(device1->CheckFeatureSupport(D3D11_FEATURE_D3D11_OPTIONS, &options, sizeof(options)))) {
                 constant_buffer_offsetting =
-                    options.ConstantBufferOffsetting && options.ConstantBufferPartialUpdate;
+                   false;
             }
         }
 
