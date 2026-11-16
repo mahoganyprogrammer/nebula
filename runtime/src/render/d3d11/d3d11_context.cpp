@@ -139,9 +139,9 @@ bool Context::initialize(const std::string& chosen_gpu, bool debug_layer) {
             }
         }
 
-        adapter_ = adapter;
-        device_ = have_d3d11_1 ? device1 : device;
-        immediate_ = have_d3d11_1 ? context1 : context;
+              adapter_ = adapter;
+        device_ = device;
+        immediate_ = context;
         device_name_ = name;
         caps_ = DeviceCaps{};
         caps_.level = level;
