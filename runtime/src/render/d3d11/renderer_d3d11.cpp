@@ -1421,6 +1421,7 @@ void RendererD3D11::draw_presented_picture(ID3D11RenderTargetView* target, const
 }
 
 bool RendererD3D11::present(const DisplayTexture* source, bool capture_backbuffer, bool black) {
+    try{
     const GpuPassScope scope{*this, GpuPass::Present};
     present_black_ = black;
     if (source == nullptr || !source->texture) {
@@ -1477,6 +1478,15 @@ bool RendererD3D11::present(const DisplayTexture* source, bool capture_backbuffe
         }
     }
     return false;
+            } catch (const _com_error& e) {
+        static bool logged = false;
+        if (!logged) {
+            logged = true;
+            std::cerr << "[present] _com_error: 0x" << std::hex << e.Error() << std::dec
+                      << " \"" << (e.ErrorMessage() ? e.ErrorMessage() : "") << "\"\n";
+        }
+        return false;
+    }
 }
 
 }  // namespace galaxy::render
