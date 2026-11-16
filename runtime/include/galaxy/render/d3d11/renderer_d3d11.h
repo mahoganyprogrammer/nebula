@@ -275,7 +275,7 @@ public:
     // before a process that ends without the shutdown).
     void finish_pictures();
 
-    [[nodiscard]] gpu::Device* device() const noexcept { return d3d11::Context::get().device(); }
+   [[nodiscard]] gpu::Device* device() const noexcept { return d3d11::Context::get().device1(); }
     [[nodiscard]] const FrameMap& frame_map() const noexcept { return scene_map_; }
     [[nodiscard]] std::uint8_t scene_samples_log2() const noexcept {
         return static_cast<std::uint8_t>(std::countr_zero(scene_.samples));
@@ -306,7 +306,7 @@ public:
     // For the renderer's parts (post chain, bloom, occlusion, camera): the immediate context with no scene pass open
     // and every recorded draw run (flush_draws, end_scene_pass); a part leaves its own state bound, and the renderer
     // binds its own again (encoder_.reset, bound_).
-    [[nodiscard]] ID3D11DeviceContext1* context() const noexcept { return d3d11::Context::get().immediate(); }
+[[nodiscard]] ID3D11DeviceContext1* context() const noexcept { return d3d11::Context::get().immediate1(); }
     enum class GpuPass : std::uint8_t {
         Scene, Resolve, FramePass, DisplayCopy, Bloom, SceneAa, SceneAo, Present, Camera, Count
     };
