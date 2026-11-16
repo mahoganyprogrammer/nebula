@@ -292,20 +292,12 @@ bool RendererD3D11::create_swap_chain() {
         std::cerr << "[Renderer] " << init_error_ << '\n';
         return false;
     }
-    // After the factory2 null check
-    if (factory2 == nullptr) {
-        std::cerr << "[swap] factory2 is null\n";
-        init_error_ = "no DXGI 1.2 factory";
-        return false;
-    }
-
- 
- 
-    std::cerr << "[swap] swap_chain_ assigned, MakeWindowAssociation next\n";
     
     d3d11::ComPtr<IDXGISwapChain1> chain;
 
     // First attempt: the requested flip model with waitable/tearing flags.
+            std::cerr << "[Renderer] 1st attempt"  << '\n';
+
     HRESULT hr = factory2->CreateSwapChainForHwnd(context.device(), window_, &scd, nullptr, nullptr, &chain);
     if (FAILED(hr)) {
         std::cerr << "[Renderer] CreateSwapChainForHwnd failed: 0x" << std::hex
