@@ -999,7 +999,7 @@ bool RendererD3D11::record_screen_probes(std::size_t slot, std::span<const Scree
         return false;
     }
     const auto count = static_cast<std::uint32_t>(probes.size());
-    ID3D11Device1* const device = d3d11::Context::get().device();
+ID3D11Device* const device = d3d11::Context::get().device();
     if (out.capacity < count) {
         out = ProbeSlot{};
         D3D11_BUFFER_DESC desc{};
