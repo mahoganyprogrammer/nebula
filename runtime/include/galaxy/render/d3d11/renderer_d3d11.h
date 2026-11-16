@@ -1,4 +1,4 @@
-g// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-only
 // The renderer on Direct3D 11 (feature level 11_0 and up), with the interface RenderCore uses on RendererD3D12,
 // RendererVk and RendererMtl. The executable NebulaD11 is built with it (NEBULA_GPU_D3D11); the Direct3D 12
 // executable starts it when no adapter passes its probe (renderer_d3d12.cpp try_adapter) or the settings ask for it.
