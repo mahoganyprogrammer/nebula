@@ -96,7 +96,13 @@ bool RendererD3D11::initialize(int window_width, int window_height, const FrameM
         set_mod_post_compiler(&compile_mod_post_stage, false);
         set_mod_post_motion(false);
         reset_sampler_frame();
-   ID3D11Device* const d3d = d3d11::Context::get().device();
+ID3D11Device1* const d3d = d3d11::Context::get().device1();
+if (d3d == nullptr) {
+    // Direct3D 11.1 unavailable (feature level 11_0 only): the effects that need it
+    // are skipped below by their own capability checks; nothing here can initialise.
+    // Choose whatever the enclosing function does on a failed init.
+    return false;   // or `return;` if this is a void function
+}
         if (!bloom_.initialize(d3d)) {
             std::cerr << "[game-bloom] off on this device; the game's own chain draws it\n";
         }
