@@ -148,6 +148,8 @@ public:
 
     [[nodiscard]] ID3D11Device* device() const noexcept { return device_.Get(); }
     [[nodiscard]] ID3D11DeviceContext* immediate() const noexcept { return immediate_.Get(); }
+[[nodiscard]] ID3D11Device1* device1() const noexcept { return device1_.Get(); }
+    [[nodiscard]] ID3D11DeviceContext1* immediate1() const noexcept { return immediate1_.Get(); }
     [[nodiscard]] IDXGIFactory2* factory() const noexcept { return factory_.Get(); }
     [[nodiscard]] IDXGIAdapter1* adapter() const noexcept { return adapter_.Get(); }
     [[nodiscard]] const DeviceCaps& caps() const noexcept { return caps_; }
@@ -205,6 +207,8 @@ private:
 
 ComPtr<ID3D11Device> device_;
 ComPtr<ID3D11DeviceContext> immediate_;
+  ComPtr<ID3D11Device1> device1_;            // null on feature level 11_0
+    ComPtr<ID3D11DeviceContext1> immediate1_;  // null on feature level 11_0
     ComPtr<ID3D11Fence> fence_;  // null: event queries
     ComPtr<ID3D11InfoQueue> info_queue_;  // the debug layer's, null without it
     HANDLE fence_event_ = nullptr;
