@@ -727,7 +727,8 @@ class Reader:
                 start = self.api.typeOffsetOf(owner_type, spelled.encode())
                 self.fields(decl, self.api.type(decl), row, prefix + spelled + ".", base_bits + max(start, 0))
             
-        def want(self, t):
+        
+    def want(self, t):
         """A template instance, or a record nested in one, that a type names (by value, pointer, reference or array,
         as a function pointer's result or parameter, as a member pointer's class) is a row of its own; else it
         would be named by texts and described nowhere."""
@@ -750,7 +751,10 @@ class Reader:
                     self.want(self.api.resultType(pointee))
                     for i in range(max(self.api.numArgTypes(pointee), 0)):
                         self.want(self.api.argType(pointee, i))
-            t = self.api.canonical(self.api.element(t) if t.kind in (T_CONSTANT_ARRAY, T_INCOMPLETE_ARRAY) else self.api.pointee(t))
+            t = self.api.canonical(
+                self.api.element(t) if t.kind in (T_CONSTANT_ARRAY, T_INCOMPLETE_ARRAY)
+                else self.api.pointee(t)
+            )
         if t.kind in (I.T_FUNCTION_PROTO, I.T_FUNCTION_NO_PROTO):
             self.want(self.api.resultType(t))
             for i in range(max(self.api.numArgTypes(t), 0)):
@@ -773,6 +777,7 @@ class Reader:
         self.want(self.api.resultType(t))
         for i in range(max(self.api.numArgTypes(t), 0)):
             self.want(self.api.argType(t, i))
+
 
     def member_alias(self, t):
         """A typedef or using of a template instance that a type names (`NebulaList<AudMe>::Link`): an alias row, as a
