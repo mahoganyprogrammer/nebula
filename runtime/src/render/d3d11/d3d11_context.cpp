@@ -123,34 +123,38 @@ bool Context::initialize(const std::string& chosen_gpu, bool debug_layer) {
             std::cout << "[gpu] passed over " << refused << '\n';
             continue;
         }
+        // Feature level 11_0 is enough: the 11.1 optional features (constant-buffer offsetting
+        // and partial update) are used when present, not required. This is what lets SM 5.0 /
+        // FL 11_0 parts such as Intel HD 530 through.
         ComPtr<ID3D11Device1> device1;
         ComPtr<ID3D11DeviceContext1> context1;
-        if (FAILED(device.As(&device1)) || FAILED(context.As(&context1))) {
-            refused = name + ": no Direct3D 11.1 runtime";
-            continue;
+        const bool have_d3d11_1 = SUCCEEDED(device.As(&device1)) && SUCCEEDED(context.As(&context1));
+
+        bool constant_buffer_offsetting = false;
+        if (have_d3d11_1) {
+            D3D11_FEATURE_DATA_D3D11_OPTIONS options{};
+            if (SUCCEEDED(device1->CheckFeatureSupport(D3D11_FEATURE_D3D11_OPTIONS, &options, sizeof(options)))) {
+                constant_buffer_offsetting =
+                    options.ConstantBufferOffsetting && options.ConstantBufferPartialUpdate;
+            }
         }
-        // Constant buffers bound at an offset and written in part: the draws' rows live in shared buffers.
-        D3D11_FEATURE_DATA_D3D11_OPTIONS options{};
-        if (FAILED(device1->CheckFeatureSupport(D3D11_FEATURE_D3D11_OPTIONS, &options, sizeof(options))) ||
-            !options.ConstantBufferOffsetting || !options.ConstantBufferPartialUpdate) {
-            refused = name + ": no constant buffer offsets";
-            std::cout << "[gpu] passed over " << refused << '\n';
-            continue;
-        }
+
         adapter_ = adapter;
-        device_ = device1;
-        immediate_ = context1;
+        device_ = have_d3d11_1 ? device1 : device;
+        immediate_ = have_d3d11_1 ? context1 : context;
         device_name_ = name;
         caps_ = DeviceCaps{};
         caps_.level = level;
         caps_.vendor = desc.VendorId;
         caps_.dedicated_bytes = desc.DedicatedVideoMemory;
         caps_.unified_memory = desc.DedicatedVideoMemory < (std::uint64_t{512} << 20u);
+        caps_.constant_buffer_offsetting = constant_buffer_offsetting;
         // The debug layer's messages, read back each frame (report_messages): Direct3D 11 has no callback.
-        if ((flags & D3D11_CREATE_DEVICE_DEBUG) != 0u && SUCCEEDED(device1.As(&info_queue_))) {
+        if ((flags & D3D11_CREATE_DEVICE_DEBUG) != 0u && SUCCEEDED(device_.As(&info_queue_))) {
             info_queue_->SetMessageCountLimit(4096u);
         }
-        std::cout << "[gpu] d3d11 debug-layer=" << (info_queue_ != nullptr ? 1 : 0) << '\n';
+        std::cout << "[gpu] d3d11 debug-layer=" << (info_queue_ != nullptr ? 1 : 0)
+                  << " cb-offsetting=" << (constant_buffer_offsetting ? 1 : 0) << '\n';
         break;
     }
     if (device_ == nullptr) {
@@ -496,40 +500,81 @@ void Context::upload_written() {
         for (const ComPtr<ID3D11Buffer>& made : buffer->gpu) {
             any = any || made != nullptr;
         }
-        pages.resize(std::max<std::size_t>(pages.size(), 4096u));
-        ULONG_PTR count = pages.size();
-        DWORD page_bytes = 4096u;
-        // Every written page since the last call; read and reset in one call, so a write after it is seen next time.
-        while (GetWriteWatch(WRITE_WATCH_FLAG_RESET, buffer->shadow, buffer->size, pages.data(), &count, &page_bytes) == 0u) {
-            if (any && count != 0u) {
-                // Runs of adjacent pages, each one UpdateSubresource1 into every video-memory buffer made.
-                std::size_t i = 0;
-                while (i < count) {
-                    const auto* first = static_cast<const std::byte*>(pages[i]);
-                    std::size_t j = i + 1u;
-                    while (j < count && static_cast<const std::byte*>(pages[j]) ==
-                                            static_cast<const std::byte*>(pages[j - 1u]) + page_bytes) {
-                        ++j;
-                    }
-                    const std::uint64_t begin = static_cast<std::uint64_t>(first - buffer->shadow);
-                    const std::uint64_t end = std::min<std::uint64_t>(begin + (j - i) * page_bytes, buffer->size);
-                    for (std::size_t use = 0; use < buffer->gpu.size(); ++use) {
-                        if (buffer->gpu[use] == nullptr) {
-                            continue;
+        if (!any) {
+            // Still drain the write-watch pages so the reset happens; nothing to upload.
+            pages.resize(std::max<std::size_t>(pages.size(), 4096u));
+            ULONG_PTR count = pages.size();
+            DWORD page_bytes = 4096u;
+            while (GetWriteWatch(WRITE_WATCH_FLAG_RESET, buffer->shadow, buffer->size, pages.data(), &count,
+                                 &page_bytes) == 0u &&
+                   count >= pages.size()) {
+                count = pages.size();
+            }
+            continue;
+        }
+
+        if (caps_.constant_buffer_offsetting) {
+            // Direct3D 11.1 path: UpdateSubresource1 with a box, per run of written pages.
+            pages.resize(std::max<std::size_t>(pages.size(), 4096u));
+            ULONG_PTR count = pages.size();
+            DWORD page_bytes = 4096u;
+            while (GetWriteWatch(WRITE_WATCH_FLAG_RESET, buffer->shadow, buffer->size, pages.data(), &count,
+                                 &page_bytes) == 0u) {
+                if (count != 0u) {
+                    std::size_t i = 0;
+                    while (i < count) {
+                        const auto* first = static_cast<const std::byte*>(pages[i]);
+                        std::size_t j = i + 1u;
+                        while (j < count && static_cast<const std::byte*>(pages[j]) ==
+                                                static_cast<const std::byte*>(pages[j - 1u]) + page_bytes) {
+                            ++j;
                         }
-                        // Constant buffers are written in 16-byte steps (ConstantBufferPartialUpdate); pages are aligned.
-                        const D3D11_BOX box{static_cast<UINT>(begin), 0u, 0u, static_cast<UINT>(end), 1u, 1u};
-                        immediate_->UpdateSubresource1(buffer->gpu[use].Get(), 0u, &box, buffer->shadow + begin, 0u, 0u,
-                                                       D3D11_COPY_NO_OVERWRITE);
+                        const std::uint64_t begin = static_cast<std::uint64_t>(first - buffer->shadow);
+                        const std::uint64_t end = std::min<std::uint64_t>(begin + (j - i) * page_bytes, buffer->size);
+                        for (std::size_t use = 0; use < buffer->gpu.size(); ++use) {
+                            if (buffer->gpu[use] == nullptr) {
+                                continue;
+                            }
+                            // Constant buffers are written in 16-byte steps (ConstantBufferPartialUpdate); pages are
+                            // aligned.
+                            const D3D11_BOX box{static_cast<UINT>(begin), 0u, 0u, static_cast<UINT>(end), 1u, 1u};
+                            immediate_->UpdateSubresource1(buffer->gpu[use].Get(), 0u, &box, buffer->shadow + begin, 0u,
+                                                           0u, D3D11_COPY_NO_OVERWRITE);
+                        }
+                        i = j;
                     }
-                    i = j;
                 }
+                if (count < pages.size()) {
+                    break;
+                }
+                count = pages.size();
             }
-            if (count < pages.size()) {
-                break;
+        } else {
+            // Feature level 11_0 path: no UpdateSubresource1, no boxed partial writes. Drain the
+            // written pages, then push the whole buffer once per subresource.
+            bool dirty = false;
+            pages.resize(std::max<std::size_t>(pages.size(), 4096u));
+            ULONG_PTR count = pages.size();
+            DWORD page_bytes = 4096u;
+            while (GetWriteWatch(WRITE_WATCH_FLAG_RESET, buffer->shadow, buffer->size, pages.data(), &count,
+                                 &page_bytes) == 0u) {
+                if (count != 0u) {
+                    dirty = true;
+                }
+                if (count < pages.size()) {
+                    break;
+                }
+                count = pages.size();
             }
-            // More pages than the array holds: the rest after a second call (the first reset only those it returned).
-            count = pages.size();
+            if (!dirty) {
+                continue;
+            }
+            for (std::size_t use = 0; use < buffer->gpu.size(); ++use) {
+                if (buffer->gpu[use] == nullptr) {
+                    continue;
+                }
+                immediate_->UpdateSubresource(buffer->gpu[use].Get(), 0u, nullptr, buffer->shadow, 0u, 0u);
+            }
         }
     }
 }
