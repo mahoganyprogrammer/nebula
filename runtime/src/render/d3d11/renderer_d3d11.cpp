@@ -299,13 +299,7 @@ bool RendererD3D11::create_swap_chain() {
         return false;
     }
 
-    d3d11::ComPtr<IDXGISwapChain1> chain;
-    std::cerr << "[swap] attempting flip-model chain (SwapEffect=" << scd.SwapEffect
-              << " BufferCount=" << scd.BufferCount
-              << " Flags=0x" << std::hex << scd.Flags << std::dec << ")\n";
-
-    HRESULT hr = factory2->CreateSwapChainForHwnd(context.device(), window_, &scd, nullptr, nullptr, &chain);
-    if (FAILED(hr)) {
+   if (FAILED(hr)) {
         std::cerr << "[swap] flip-model failed: 0x" << std::hex << static_cast<unsigned long>(hr) << std::dec << '\n';
 
         DXGI_SWAP_CHAIN_DESC1 legacy = scd;
@@ -405,6 +399,7 @@ bool RendererD3D11::create_swap_chain() {
     swap_dirty_ = false;
     return true;
 }
+
 
 bool RendererD3D11::resize_swap_chain(std::uint32_t width, std::uint32_t height) {
     if (!swap_chain_) {
