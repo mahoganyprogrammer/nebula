@@ -125,13 +125,14 @@ struct RenderLayout {
 };
 
 struct DeviceCaps {
-    D3D_FEATURE_LEVEL level = D3D_FEATURE_LEVEL_11_0;
-    bool tearing = false;               // DXGI_FEATURE_PRESENT_ALLOW_TEARING
-    bool flip_model = false;            // DXGI 1.4+: FLIP_DISCARD swap chains
-    bool unified_memory = false;        // the adapter has no video memory of its own (DXGI: DedicatedVideoMemory small)
-    unsigned max_samples = 1u;          // the most samples a pixel the scene's formats take (MSAA)
-    std::uint64_t dedicated_bytes = 0u;
-    std::uint32_t vendor = 0u;
+    D3D_FEATURE_LEVEL level{};
+    unsigned vendor{};
+    std::uint64_t dedicated_bytes{};
+    bool unified_memory{};
+    bool flip_model{};
+    bool tearing{};
+    unsigned max_samples{1u};
+    bool constant_buffer_offsetting{false};   // D3D11.1 partial constant-buffer writes available
 };
 
 class Context {
