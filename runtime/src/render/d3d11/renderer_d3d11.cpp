@@ -1018,16 +1018,17 @@ void RendererD3D11::bind_constants(unsigned slot, gpu::Address address, bool ver
         buffer = nullptr;
     }
     ID3D11DeviceContext1* const ctx = context();
-    if (d3d11::Context::get().caps().constant_buffer_offsetting) {
+  //  if (d3d11::Context::get().caps().constant_buffer_offsetting) {
         // Feature level 11_1: the shared ring is bound at an offset.
-        if (vertex) {
-            ctx->VSSetConstantBuffers1(slot, 1u, &buffer, &first, &count);
-        }
-        if (pixel) {
-            ctx->PSSetConstantBuffers1(slot, 1u, &buffer, &first, &count);
-        }
-        return;
-    }
+    //    if (vertex) {
+      //      ctx->VSSetConstantBuffers1(slot, 1u, &buffer, &first, &count);
+       // }
+        //if (pixel) {
+          //  ctx->PSSetConstantBuffers1(slot, 1u, &buffer, &first, &count);
+        //}
+       // return;
+    //}
+    
     // Feature level 11_0: copy the draw's window into a dynamic buffer and bind from byte 0.
     if (buffer == nullptr) {
         if (vertex) {
