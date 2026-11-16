@@ -139,7 +139,7 @@ bool Context::initialize(const std::string& chosen_gpu, bool debug_layer) {
             }
         }
 
-              adapter_ = adapter;
+        adapter_ = adapter;
         device_ = device;
         immediate_ = context;
         device_name_ = name;
@@ -515,6 +515,11 @@ void Context::upload_written() {
 
         if (caps_.constant_buffer_offsetting) {
             // Direct3D 11.1 path: UpdateSubresource1 with a box, per run of written pages.
+            // immediate_ is the base ID3D11DeviceContext, so get the 11.1 interface locally.
+            ComPtr<ID3D11DeviceContext1> ctx1;
+            if (FAILED(immediate_.As(&ctx1))) {
+                continue;
+            }
             pages.resize(std::max<std::size_t>(pages.size(), 4096u));
             ULONG_PTR count = pages.size();
             DWORD page_bytes = 4096u;
@@ -538,8 +543,8 @@ void Context::upload_written() {
                             // Constant buffers are written in 16-byte steps (ConstantBufferPartialUpdate); pages are
                             // aligned.
                             const D3D11_BOX box{static_cast<UINT>(begin), 0u, 0u, static_cast<UINT>(end), 1u, 1u};
-                            immediate_->UpdateSubresource1(buffer->gpu[use].Get(), 0u, &box, buffer->shadow + begin, 0u,
-                                                           0u, D3D11_COPY_NO_OVERWRITE);
+                            ctx1->UpdateSubresource1(buffer->gpu[use].Get(), 0u, &box, buffer->shadow + begin, 0u,
+                                                     0u, D3D11_COPY_NO_OVERWRITE);
                         }
                         i = j;
                     }
