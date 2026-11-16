@@ -154,7 +154,7 @@ bool RendererD3D11::create_states() {
     
     const auto check = [](HRESULT hr, const char* what) {
         if (FAILED(hr)) {
-            throw std::runtime_error(std::string("the renderer's ") + what + " could not be made");
+            throw std::runtime_error(std::string("the renderer's ") + what + " could not be made(create_states)");
         }
     };
     D3D11_SAMPLER_DESC sampler{};
@@ -316,7 +316,7 @@ bool RendererD3D11::create_swap_chain() {
         if (FAILED(hr)) {
             std::cerr << "[Renderer] legacy CreateSwapChainForHwnd failed: 0x" << std::hex
                       << static_cast<unsigned long>(hr) << std::dec << '\n';
-            init_error_ = "the swap chain could not be made";
+            init_error_ = "the swap chain could not be made 319";
             return false;
         }
         tearing_ = false;                       // bitblt cannot tear
@@ -327,7 +327,7 @@ bool RendererD3D11::create_swap_chain() {
     }
 
     if (FAILED(chain.As(&swap_chain_))) {
-        init_error_ = "the swap chain could not be made";
+        init_error_ = "the swap chain could not be made 330";
         std::cerr << "[Renderer] " << init_error_ << '\n';
         return false;
     }
