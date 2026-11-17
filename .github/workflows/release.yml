@@ -176,11 +176,10 @@ jobs:
           path: ${{ runner.temp }}/bin
       - name: Setup
         run: >-
-          .\installer\build-native-setup.ps1 -Version $env:VERSION -Bin (Join-Path $env:RUNNER_TEMP 'bin')
-          -Dxc (Join-Path $env:RUNNER_TEMP 'dxc') -OutputDirectory (Join-Path $env:RUNNER_TEMP 'dist')
+          .\installer\build-native-setup.ps1 -Version $env:VERSION 
+          -OutputDirectory (Join-Path $env:RUNNER_TEMP 'dist')
           -SetupName $env:SETUP -Repository $env:GITHUB_REPOSITORY
-          -Names (Join-Path $env:RUNNER_TEMP 'bin')
-          -ShippedMods (Join-Path $env:RUNNER_TEMP 'bin')
+         
 
   publish:
     name: Publish
