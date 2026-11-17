@@ -273,37 +273,27 @@ bool RendererD3D11::wants_hdr() const {
 
 // A flip-model swap chain of kSwapChainBuffers 8-bit buffers at the window's size, a waitable object and a latency of one
 // frame (renderer_d3d12.cpp create_swap_chain), tearing where the system offers it so that VSync off presents at once.
+
 bool RendererD3D11::create_swap_chain() {
     std::cerr << "[swap] create_swap_chain entered\n";
     d3d11::Context& context = d3d11::Context::get();
-    const d3d11::DeviceCaps& caps = context.caps();
 
-    // Windows 7 has no DXGI 1.2 flip model and no IDXGISwapChain2: the bitblt
-    // path is the only one that behaves. Force it there.
-    const bool force_legacy = !caps.flip_model;  // already true on Win7
-
+    // One swap effect on every device: the legacy bitblt chain, one buffer,
+    // no waitable object, no tearing. The flip model (DXGI 1.2+) is not used
+    // anywhere in this renderer: it needs IDXGISwapChain2 and a waitable
+    // object that Windows 7 cannot provide, and its frame-latency semantics
+    // block Present on the Intel WDDM 1.1 driver.
     DXGI_SWAP_CHAIN_DESC1 scd{};
     scd.Width  = std::max(host_window::backbuffer_width, 1u);
     scd.Height = std::max(host_window::backbuffer_height, 1u);
     scd.Format = swap_format_;
     scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     scd.SampleDesc.Count = 1;
-    scd.Scaling = DXGI_SCALING_STRETCH;
-    scd.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
-
-    if (!force_legacy) {
-        scd.SwapEffect  = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-        scd.BufferCount = kSwapChainBuffers;
-        scd.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
-        if (caps.tearing) {
-            scd.Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
-        }
-    } else {
-        // Legacy bitblt: one buffer, no waitable object, no tearing.
-        scd.SwapEffect  = DXGI_SWAP_EFFECT_DISCARD;
-        scd.BufferCount = 1;
-        scd.Flags = 0u;
-    }
+    scd.Scaling     = DXGI_SCALING_STRETCH;
+    scd.AlphaMode   = DXGI_ALPHA_MODE_IGNORE;
+    scd.SwapEffect  = DXGI_SWAP_EFFECT_DISCARD;
+    scd.BufferCount = 1;
+    scd.Flags       = 0u;
 
     IDXGIFactory2* const factory2 = context.factory2();
     if (factory2 == nullptr) {
@@ -312,38 +302,18 @@ bool RendererD3D11::create_swap_chain() {
         return false;
     }
 
-    d3d11::ComPtr<IDXGISwapChain1> chain;
-    std::cerr << "[swap] attempt 1 (SwapEffect=" << scd.SwapEffect
-              << " BufferCount=" << scd.BufferCount
-              << " Flags=0x" << std::hex << scd.Flags << std::dec << ")\n";
+    std::cerr << "[swap] legacy bitblt (SwapEffect=" << scd.SwapEffect
+              << " BufferCount=" << scd.BufferCount << " Flags=0)\n";
 
+    d3d11::ComPtr<IDXGISwapChain1> chain;
     HRESULT hr = factory2->CreateSwapChainForHwnd(context.device(), window_, &scd, nullptr, nullptr, &chain);
     if (FAILED(hr)) {
-        std::cerr << "[swap] attempt 1 failed: 0x" << std::hex
+        std::cerr << "[swap] CreateSwapChainForHwnd failed: 0x" << std::hex
                   << static_cast<unsigned long>(hr) << std::dec << '\n';
-        DXGI_SWAP_CHAIN_DESC1 legacy = scd;
-        legacy.SwapEffect  = DXGI_SWAP_EFFECT_DISCARD;
-        legacy.BufferCount = 1;
-        legacy.Scaling     = DXGI_SCALING_STRETCH;
-        legacy.Flags       = 0;
-        std::cerr << "[swap] attempt 2 (legacy bitblt, SwapEffect=" << legacy.SwapEffect
-                  << " BufferCount=" << legacy.BufferCount << " Flags=0)\n";
-        hr = factory2->CreateSwapChainForHwnd(context.device(), window_, &legacy, nullptr, nullptr, &chain);
-        if (FAILED(hr)) {
-            std::cerr << "[swap] attempt 2 failed: 0x" << std::hex
-                      << static_cast<unsigned long>(hr) << std::dec << '\n';
-            init_error_ = "the swap chain could not be made";
-            return false;
-        }
-        scd = legacy;
-        tearing_ = false;
-        std::cerr << "[swap] legacy bitblt chain created\n";
-    } else {
-        tearing_ = caps.tearing && (scd.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) != 0u;
-        std::cerr << "[swap] flip-model chain created\n";
+        init_error_ = "the swap chain could not be made";
+        return false;
     }
 
-    // Hold the base IDXGISwapChain; extras only when the object actually supports them.
     swap_chain_ = chain;
     if (!swap_chain_) {
         std::cerr << "[swap] swap chain assignment failed\n";
@@ -353,17 +323,9 @@ bool RendererD3D11::create_swap_chain() {
 
     context.factory()->MakeWindowAssociation(window_, DXGI_MWA_NO_ALT_ENTER);
 
-    // The waitable object exists only on the flip-model path. On the legacy
-    // path, do NOT touch IDXGISwapChain2 or SetMaximumFrameLatency: both
-    // block Present() for a full vblank on Windows 7 drivers.
+    // No waitable object: the legacy path never has one.
     frame_latency_waitable_ = nullptr;
-    if (scd.SwapEffect == DXGI_SWAP_EFFECT_FLIP_DISCARD) {
-        d3d11::ComPtr<IDXGISwapChain2> chain2;
-        if (SUCCEEDED(swap_chain_.As(&chain2))) {
-            (void)chain2->SetMaximumFrameLatency(1u);
-            frame_latency_waitable_ = chain2->GetFrameLatencyWaitableObject();
-        }
-    }
+    tearing_ = false;
 
     swap_width_  = scd.Width;
     swap_height_ = scd.Height;
@@ -377,9 +339,7 @@ bool RendererD3D11::create_swap_chain() {
         return false;
     }
     swap_dirty_ = false;
-    std::cerr << "[swap] swap chain ready, width=" << swap_width_ << " height=" << swap_height_
-              << " tearing=" << (tearing_ ? 1 : 0)
-              << " waitable=" << (frame_latency_waitable_ != nullptr ? 1 : 0) << '\n';
+    std::cerr << "[swap] swap chain ready, width=" << swap_width_ << " height=" << swap_height_ << '\n';
     return true;
 }
 
@@ -729,7 +689,12 @@ std::uint64_t RendererD3D11::end_frame(bool present_swap_chain, SubmissionCallba
     double present_ms = 0.0;
     if (presenting) {
         const RenderConfig cfg = get_render_config();
-        const UINT vsync = present_sync_interval(std::min(2u, cfg.vsync_interval), cfg.max_fps);
+        // The legacy bitblt chain has no waitable object and no flip model:
+        // Present(1, 0) on it blocks for ~10 refreshes on the Win7 Intel
+        // driver when DWM is compositing. Present(0, 0) returns at once.
+        const UINT vsync = frame_latency_waitable_ == nullptr
+                               ? 0u
+                               : present_sync_interval(std::min(2u, cfg.vsync_interval), cfg.max_fps);
         const UINT flags = vsync == 0u && tearing_ ? DXGI_PRESENT_ALLOW_TEARING : 0u;
         const float variable_rate = variable_refresh_ ? static_cast<float>(display_refresh_hz_) : 0.0f;
         const float paced_fps = variable_refresh_
@@ -745,7 +710,7 @@ std::uint64_t RendererD3D11::end_frame(bool present_swap_chain, SubmissionCallba
         const HRESULT hr = swap_chain_->Present(vsync, flags);
         const std::int64_t end = galaxy::qpc_now();
         present_ms = static_cast<double>(end - start) * 1000.0 / static_cast<double>(galaxy::qpc_frequency());
-                if (pace_wait_ms > 100.0) std::cerr << "[stall] pacer " << pace_wait_ms << " ms\n";
+        if (pace_wait_ms > 100.0) std::cerr << "[stall] pacer " << pace_wait_ms << " ms\n";
         if (present_ms > 100.0)   std::cerr << "[stall] Present " << present_ms << " ms\n";
         occluded_ = hr == DXGI_STATUS_OCCLUDED;
         if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
@@ -755,11 +720,11 @@ std::uint64_t RendererD3D11::end_frame(bool present_swap_chain, SubmissionCallba
         swap_present_qpc_ = end;
     }
     surface_lock_ = {};
-    
-       const std::int64_t t_sig = galaxy::qpc_now();
+
+    const std::int64_t t_sig = galaxy::qpc_now();
     const std::uint64_t fence = d3d11::Context::get().signal();
     log_stall("signal", t_sig);
-    
+
     (void)d3d11::Context::get().report_messages();
     frame.fence = fence;
     frame.scene_drawn = scene_drawn_;
