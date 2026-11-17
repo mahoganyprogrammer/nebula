@@ -93,6 +93,7 @@ jobs:
       # The libraries CMake builds at configure time, from the Build workflow's Direct3D 12 job: restored only, so a
       # release never writes the cache.
       - name: Configure-time dependencies
+        if: false
         uses: actions/cache/restore@v6
         with:
           path: |
@@ -101,6 +102,7 @@ jobs:
             build/host/_deps
           key: host-deps-OFF-${{ hashFiles('cmake/**', 'third_party/archive/**') }}
       - name: Configure
+        if: false
         # A release build: cross-file optimization on (NEBULA_HOST_IPO's default). There is one build kind: tests
         # attach their hooks from outside (tools/release_check.ps1 checks no source names a build kind).
         # No AVX2: the host target must run on machines without it.
@@ -109,9 +111,11 @@ jobs:
           -DCMAKE_CXX_FLAGS="/D__AVX2__=0"
           -DNEBULA_ENABLE_AVX2=OFF
       - name: Build
+        if: false
         # The program Setup ships, not the tests.
         run: cmake --build build/host --target NebulaNative
       - uses: actions/upload-artifact@v7
+        if: false
         with:
           name: release-host
           path: build/host/NebulaNative.exe
