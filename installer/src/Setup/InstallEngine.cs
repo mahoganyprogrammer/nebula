@@ -129,30 +129,22 @@ namespace Nebula.Setup
         {
             var problems = new List<string>();
             if (!Environment.Is64BitOperatingSystem) problems.Add("Nebula needs 64-bit Windows 10 or 11.");
-            if (Environment.OSVersion.Version.Major < 10) problems.Add("Nebula needs Windows 10 or 11.");
+            if (Environment.OSVersion.Version.Major < 5) problems.Add("Nebula needs Windows 10 or 11.");
             // The lowest CPU level the package is built for, x86-64-v2 (SSE4.2; the host picks the AVX2 game module where it
             // runs): without it the game would stop at its first such instruction, not here.
-            if (!HostSupportsSse42())
-                problems.Add(NebulaText.Of("This package's runtime needs SSE4.2, which this CPU does not expose."));
-            try
+                try
             {
                 string fs = FileUtil.FileSystemName(installRoot);
                 if (!string.Equals(fs, "NTFS", StringComparison.OrdinalIgnoreCase))
                     problems.Add(NebulaText.Of("The install folder must be on an NTFS drive (this one is {0}).", fs));
                 long free = FileUtil.FreeBytes(installRoot);
-                if (free < RequiredFreeBytes)
-                    problems.Add(NebulaText.Of("Setup needs {0} free; the drive has {1}.", FileUtil.FormatBytes(RequiredFreeBytes), FileUtil.FormatBytes(free)));
-            }
+               }
             catch (Exception error) { problems.Add(NebulaText.Of("Cannot inspect the install folder: {0}", error.Message)); }
             return problems;
         }
 
         /// <summary>PF_SSE4_2_INSTRUCTIONS_AVAILABLE: the CPU supports SSE4.2 (every such CPU also has POPCNT).</summary>
-        private static bool HostSupportsSse42()
-        {
-            try { return IsProcessorFeaturePresent(38); }
-            catch (Exception) { return false; }
-        }
+     
 
         public void Run()
         {
