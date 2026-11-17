@@ -382,364 +382,152 @@ bool RendererD3D11::create_swap_chain() {
               << " waitable=" << (frame_latency_waitable_ != nullptr ? 1 : 0) << '\n';
     return true;
 }
-RendererD3D11::Kept RendererD3D11::take_apart_lost_device() {
 
-
-    keep_window_ = true;
-
-
-    try {
-
-
-        shutdown();
-
-
-    } catch (const std::exception& error) {
-
-
-        std::cerr << "[RendererD3D11] the lost device's shutdown: " << error.what() << "\n";
-
-
+bool RendererD3D11::resize_swap_chain(std::uint32_t width, std::uint32_t height) {
+    if (!swap_chain_) {
+        return false;
     }
-
-
-    return Kept{window_};
-
-
+    context()->OMSetRenderTargets(0u, nullptr, nullptr);
+    backbuffer_rtv_.Reset();
+    context()->Flush();
+    DXGI_SWAP_CHAIN_DESC desc{};
+    swap_chain_->GetDesc(&desc);
+    if (FAILED(swap_chain_->ResizeBuffers(desc.BufferCount, width, height, swap_format_, desc.Flags))) {
+        std::cerr << "[Renderer] resize: ResizeBuffers failed\n";
+        return false;
+    }
+    d3d11::ComPtr<ID3D11Texture2D> buffer;
+    if (FAILED(swap_chain_->GetBuffer(0u, IID_PPV_ARGS(&buffer))) ||
+        FAILED(d3d11::Context::get().device()->CreateRenderTargetView(buffer.Get(), nullptr, &backbuffer_rtv_))) {
+        throw std::runtime_error("the swap chain's buffer could not be drawn into after a resize");
+    }
+    swap_width_ = width;
+    swap_height_ = height;
+    swap_vsync_ = wants_vsync();
+    swap_dirty_ = false;
+    return true;
 }
-
-
-
-
+RendererD3D11::Kept RendererD3D11::take_apart_lost_device() {
+    keep_window_ = true;
+    try {
+        shutdown();
+    } catch (const std::exception& error) {
+        std::cerr << "[RendererD3D11] the lost device's shutdown: " << error.what() << "\n";
+    }
+    return Kept{window_};
+}
 
 void RendererD3D11::shutdown() {
-
-
     set_mod_post_compiler(nullptr, false);
-
-
     d3d11::Context& context = d3d11::Context::get();
-
-
     if (context.ready()) {
-
-
         pass_ops_.clear();
-
-
         scene_pass_open_ = false;
-
-
         context.immediate()->ClearState();
-
-
         release_mod_post();
-
-
         wait_for_gpu_idle();
-
-
         if (mirrored_store_ != nullptr) {
-
-
             mirrored_store_->backend().set_upload_list(nullptr);
-
-
         }
-
-
         mirrored_store_ = nullptr;
-
-
         post_.shutdown();
-
-
         bloom_.shutdown();
-
-
         ao_.shutdown();
-
-
         scene_camera_.shutdown();
-
-
         scene_ = wide_scene_ = alt_scene_ = target_scene_ = SceneSet{};
-
-
         target_slots_.clear();
-
-
         pictures_.clear();
-
-
         frame_pass_targets_.clear();
-
-
         scene_capture_ = backbuffer_capture_ = display_capture_ = Readback{};
-
-
         probe_slots_.clear();
-
-
         for (Frame& frame : frames_) {
-
-
             frame = Frame{};
-
-
         }
-
-
         samplers_.clear();
-
-
         sampler_tables_.clear();
-
-
         default_sampler_table_ = gpu::Table{};
-
-
         persistent_tables_.clear();
-
-
         retired_tables_.clear();
-
-
         free_tables_.clear();
-
-
         zero_vertices_.reset();
-
-
         zero_stream_bytes_ = 0u;
-
-
         zero_stream_address_ = 0u;
-
-
         {
-
-
             std::vector<gpu::BufferRef> old;
-
-
             for (UploadRing* ring : {&vertex_ring_, &index_ring_, &constant_ring_, &matrix_ring_}) {
-
-
                 ring->release_into(old);
-
-
             }
-
-
         }
-
-
         utility_ps_ = {};
-
-
         full_screen_vs_.Reset();
-
-
         probe_cs_.Reset();
-
-
         utility_raster_.Reset();
-
-
         write_masks_ = {};
-
-
         depth_uses_ = {};
-
-
         linear_clamp_.Reset();
-
-
         point_clamp_.Reset();
-
-
         root_constants_.Reset();
-
-
         utility_constants_.Reset();
-
-
         backbuffer_rtv_.Reset();
-
-
         if (frame_latency_waitable_ != nullptr) {
-
-
             CloseHandle(frame_latency_waitable_);
-
-
             frame_latency_waitable_ = nullptr;
-
-
         }
-
-
         swap_chain_.Reset();
-
-
         context.immediate()->Flush();
-
-
     }
-
-
     surface_lock_ = {};
-
-
     context.shutdown();
-
-
     present_pacer_.reset();
-
-
     if (!keep_window_ && window_owner_ != nullptr) {
-
-
         host_window::close_game_window(*window_owner_);
-
-
         window_ = nullptr;
-
-
         window_shown_ = false;
-
-
     }
-
-
 }
-
-
-
-
 
 void RendererD3D11::grow_rings() {
-
-
     // A ring whose frames took over half their budget (or spilled) grows; one whose last 600 frames stayed under a
-
-
     // quarter of it gives half of its memory back (renderer_mtl.mm grow_rings).
-
-
     if (ring_growth_failed_ ||
-
-
         (!vertex_ring_.wants_growth() && !index_ring_.wants_growth() && !constant_ring_.wants_growth() &&
-
-
          !matrix_ring_.wants_growth() && !vertex_ring_.wants_shrink() && !index_ring_.wants_shrink() &&
-
-
          !constant_ring_.wants_shrink() && !matrix_ring_.wants_shrink())) {
-
-
         return;
-
-
     }
-
-
     // A ring is made again as new upload memory; the old memory goes with the frames that may still read it.
-
-
     gpu::Device* const device = this->device();
-
-
     std::vector<gpu::BufferRef> old;
-
-
     const auto place = [&](UploadRing& ring, const char* name, bool chunks) {
-
-
         const std::size_t had = ring.capacity();
-
-
         std::size_t capacity = ring.grown_capacity(kFramesInFlight);
-
-
         if (capacity == 0u) {
-
-
             ring_growth_failed_ = true;
-
-
             capacity = had;
-
-
         } else if (ring.wants_shrink()) {
-
-
             capacity = ring.shrunk_capacity(kFramesInFlight);
-
-
         }
-
-
         if (capacity != had) {
-
-
             std::cerr << "[gpu-rings] " << (capacity > had ? "grow " : "shrink ") << name << " frame-high-water-kb="
-
-
                       << (ring.high_water() >> 10u) << " mb=" << (had >> 20u) << "->" << (capacity >> 20u) << '\n';
-
-
         }
-
-
         ring.release_into(old);
-
-
         if (ring.initialize(device, name, UploadRing::budget(capacity, kFramesInFlight), kFramesInFlight, capacity, chunks)) {
-
-
             return true;
-
-
         }
-
-
         ring_growth_failed_ = true;
-
-
         std::cerr << "[gpu-rings] grow " << name << " failed\n";
-
-
         return ring.initialize(device, name, UploadRing::budget(had, kFramesInFlight), kFramesInFlight, had, chunks);
-
-
     };
-
-
     if (!place(vertex_ring_, "vertex", true) || !place(index_ring_, "index", true) || !place(constant_ring_, "constant", true) ||
-
-
         !place(matrix_ring_, "matrix", false)) {
-
-
         throw std::runtime_error("upload ring resize failed");
-
-
     }
-
-
     for (gpu::BufferRef& buffer : old) {
-
-
         frame_->retired_buffers.push_back(std::move(buffer));
-
-
     }
-
-
 }
+
 void RendererD3D11::trace_rings() const {
     const auto line = [](const char* name, const UploadRing& ring) {
         std::cerr << "[memory] ring " << name << ' ' << static_cast<double>(ring.capacity()) / (1024.0 * 1024.0)
@@ -953,8 +741,6 @@ std::uint64_t RendererD3D11::end_frame(bool present_swap_chain, SubmissionCallba
             WaitForSingleObjectEx(frame_latency_waitable_, 100u, TRUE) == WAIT_TIMEOUT && ++latency_timeouts_ <= 4u) {
             std::cerr << "[present] the frame latency object did not signal within 100 ms\n";
         }
-        // Already in your code — now never enters on Windows 7 because the handle is null.
-
         const std::int64_t start = galaxy::qpc_now();
         const HRESULT hr = swap_chain_->Present(vsync, flags);
         const std::int64_t end = galaxy::qpc_now();
