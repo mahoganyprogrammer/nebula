@@ -79,6 +79,7 @@ jobs:
           echo "Nebula $version: $setup (pre-release: $prerelease, publish: $publish)"
   host:
     name: Host
+    if: false
     # Visual Studio 2022's MSVC, as the Build workflow's host job uses.
     runs-on: windows-2022
     steps:
@@ -126,6 +127,7 @@ jobs:
 
   game:
     name: Game module
+    if: false
     runs-on: windows-2025
     steps:
       - uses: actions/Checkout@v7
