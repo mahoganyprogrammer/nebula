@@ -11,34 +11,38 @@ namespace Nebula.Setup
     /// <summary>Files build-native-setup.ps1 embeds in Nebula-Setup.exe.</summary>
     internal static class Payload
     {
-        private static Stream Open(string name)
-        {
-            var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(name);
-            if (stream == null) throw new FileNotFoundException("This setup is missing its embedded " + name + ".");
-            return stream;
-        }
+     private static Stream Open(string name)
+{
+    return Assembly.GetExecutingAssembly().GetManifestResourceStream(name);
+}
 
-        public static void Extract(string name, string path)
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
-            using (var input = Open(name))
-            using (var output = new FileStream(path, FileMode.Create, FileAccess.Write))
-                input.CopyTo(output);
-        }
+public static void Extract(string name, string path)
+{
+    using (var input = Open(name))
+    {
+        if (input == null) return;
+        Directory.CreateDirectory(Path.GetDirectoryName(path));
+        using (var output = new FileStream(path, FileMode.Create, FileAccess.Write))
+            input.CopyTo(output);
+    }
+}
 
-        public static bool Has(string name)
-        {
-            return Array.IndexOf(Assembly.GetExecutingAssembly().GetManifestResourceNames(), name) >= 0;
-        }
+public static bool Has(string name)
+{
+    return Array.IndexOf(Assembly.GetExecutingAssembly().GetManifestResourceNames(), name) >= 0;
+}
 
-        /// <summary>An embedded zip unpacked into <paramref name="folder"/>, which must hold nothing yet.</summary>
-        public static void ExtractZip(string name, string folder)
-        {
-            Directory.CreateDirectory(folder);
-            using (var input = Open(name))
-            using (var zip = new ZipArchive(input, ZipArchiveMode.Read))
-                zip.ExtractToDirectory(folder);
-        }
+/// <summary>An embedded zip unpacked into <paramref name="folder"/>, which must hold nothing yet. Not embedded: skipped.</summary>
+public static void ExtractZip(string name, string folder)
+{
+    using (var input = Open(name))
+    {
+        if (input == null) return;
+        Directory.CreateDirectory(folder);
+        using (var zip = new ZipArchive(input, ZipArchiveMode.Read))
+            zip.ExtractToDirectory(folder);
+    }
+}
     }
 
     /// <summary>The currently installed version, read from current.json; its folder must hold a readable install.json.</summary>
