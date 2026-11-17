@@ -85,6 +85,7 @@ jobs:
       - uses: actions/Checkout@v7
       # The built-in mods, packed in the lumalink submodule (cmake/nebula_builtin_mods.cmake).
       - name: Built-in mods
+        if: false
         run: git submodule update --init --depth 1 lumalink
       - uses: ilammy/msvc-dev-cmd@v1
         with:
