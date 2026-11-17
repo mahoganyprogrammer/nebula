@@ -144,6 +144,7 @@ jobs:
         if: false
         run: .\native\build.ps1 -Petari native\petari -Build build\game
       - uses: actions/upload-artifact@v7
+        if: false
         with:
           name: release-game
           path: build/game/smg_game.dll
