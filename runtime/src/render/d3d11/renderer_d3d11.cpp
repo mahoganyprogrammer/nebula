@@ -350,14 +350,18 @@ bool RendererD3D11::create_swap_chain() {
     }
 
     context.factory()->MakeWindowAssociation(window_, DXGI_MWA_NO_ALT_ENTER);
-
-    {
+     {
         d3d11::ComPtr<IDXGISwapChain2> chain2;
         if (SUCCEEDED(swap_chain_.As(&chain2))) {
             (void)chain2->SetMaximumFrameLatency(1u);
             frame_latency_waitable_ = chain2->GetFrameLatencyWaitableObject();
         } else {
             frame_latency_waitable_ = nullptr;
+            // Windows 7 has no IDXGISwapChain2: limit the queue through the DXGI device instead.
+            d3d11::ComPtr<IDXGIDevice1> dxgi_device;
+            if (SUCCEEDED(context.device()->QueryInterface(IID_PPV_ARGS(&dxgi_device)))) {
+                (void)dxgi_device->SetMaximumFrameLatency(1u);
+            }
         }
     }
 
