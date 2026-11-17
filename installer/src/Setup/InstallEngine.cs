@@ -126,25 +126,19 @@ namespace Nebula.Setup
         public const long RequiredFreeBytes = 8L << 30;
 
         public static List<string> CheckRequirements(string installRoot)
-        {
-            var problems = new List<string>();
-            if (!Environment.Is64BitOperatingSystem) problems.Add("Nebula needs 64-bit Windows 10 or 11.");
-            if (Environment.OSVersion.Version.Major < 5) problems.Add("Nebula needs Windows 10 or 11.");
-            // The lowest CPU level the package is built for, x86-64-v2 (SSE4.2; the host picks the AVX2 game module where it
-            // runs): without it the game would stop at its first such instruction, not here.
-                try
-            {
-                string fs = FileUtil.FileSystemName(installRoot);
-                if (!string.Equals(fs, "NTFS", StringComparison.OrdinalIgnoreCase))
-                    problems.Add(NebulaText.Of("The install folder must be on an NTFS drive (this one is {0}).", fs));
-                long free = FileUtil.FreeBytes(installRoot);
-               }
-            catch (Exception error) { problems.Add(NebulaText.Of("Cannot inspect the install folder: {0}", error.Message)); }
-            return problems;
-        }
-
-        /// <summary>PF_SSE4_2_INSTRUCTIONS_AVAILABLE: the CPU supports SSE4.2 (every such CPU also has POPCNT).</summary>
-     
+{
+    var problems = new List<string>();
+    if (!Environment.Is64BitOperatingSystem) problems.Add("Nebula needs 64-bit Windows 10 or 11.");
+    if (Environment.OSVersion.Version.Major < 5) problems.Add("Nebula needs Windows 10 or 11.");
+    try
+    {
+        string fs = FileUtil.FileSystemName(installRoot);
+        if (!string.Equals(fs, "NTFS", StringComparison.OrdinalIgnoreCase))
+            problems.Add(NebulaText.Of("The install folder must be on an NTFS drive (this one is {0}).", fs));
+    }
+    catch (Exception error) { problems.Add(NebulaText.Of("Cannot inspect the install folder: {0}", error.Message)); }
+    return problems;
+}
 
         public void Run()
         {
