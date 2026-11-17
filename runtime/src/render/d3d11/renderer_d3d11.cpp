@@ -39,6 +39,13 @@ UINT constants_in(std::uint64_t size, std::uint64_t offset) noexcept {
     constexpr std::size_t kFl11ConstantBytes = 4096;
     return static_cast<UINT>(std::min<std::uint64_t>(D3D11_REQ_CONSTANT_BUFFER_ELEMENT_COUNT, left & ~std::uint64_t{15}));
 }
+void log_stall(const char* what, std::int64_t start) {
+    const double ms = static_cast<double>(galaxy::qpc_now() - start) * 1000.0 /
+                      static_cast<double>(galaxy::qpc_frequency());
+    if (ms > 100.0) {
+        std::cerr << "[stall] " << what << " " << ms << " ms\n";
+    }
+}
    constexpr std::size_t kFl11ConstantBytes = 4096;
 // RendererD3D11::GpuPass by name: the settings page's, and present-stats' gpu-pass-ms (Direct3D 12's names).
 constexpr const char* kPassTimeNames[] = {"scene", "resolve", "frame read", "display copy", "bloom", "scene aa", "scene ao",
@@ -600,7 +607,10 @@ void RendererD3D11::begin_frame() {
     bloom_.trim_idle();
     ao_.trim_idle();
     if (frame.fence != 0u) {
+          const std::int64_t t_wait = galaxy::qpc_now();
         wait_for_fence_value(frame.fence);
+        log_stall("fence-wait", t_wait);
+        
         // The slot's last frame's GPU time, from its timestamps (the fence passed: they are there).
         if (frame.timed) {
             D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjoint{};
@@ -730,6 +740,8 @@ std::uint64_t RendererD3D11::end_frame(bool present_swap_chain, SubmissionCallba
         const HRESULT hr = swap_chain_->Present(vsync, flags);
         const std::int64_t end = galaxy::qpc_now();
         present_ms = static_cast<double>(end - start) * 1000.0 / static_cast<double>(galaxy::qpc_frequency());
+                if (pace_wait_ms > 100.0) std::cerr << "[stall] pacer " << pace_wait_ms << " ms\n";
+        if (present_ms > 100.0)   std::cerr << "[stall] Present " << present_ms << " ms\n";
         occluded_ = hr == DXGI_STATUS_OCCLUDED;
         if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
             surface_lock_ = {};
@@ -738,7 +750,11 @@ std::uint64_t RendererD3D11::end_frame(bool present_swap_chain, SubmissionCallba
         swap_present_qpc_ = end;
     }
     surface_lock_ = {};
+    
+       const std::int64_t t_sig = galaxy::qpc_now();
     const std::uint64_t fence = d3d11::Context::get().signal();
+    log_stall("signal", t_sig);
+    
     (void)d3d11::Context::get().report_messages();
     frame.fence = fence;
     frame.scene_drawn = scene_drawn_;
