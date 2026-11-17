@@ -68,11 +68,7 @@ namespace Nebula.Setup
         private const string NativeIsa = "x86-64-v2";
 
         /// <summary>What a version folder holds (each from the package, by its published name).</summary>
-        private static readonly string[] NativeFiles =
-        {
-            "Nebula.exe", "Nebula-x86-64-v2.exe", "NebulaD11.exe", "NebulaD11-x86-64-v2.exe", "smg_game.dll", "smg_game_plain.dll", @"x86-64-v2\smg_game.dll", @"x86-64-v2\smg_game_plain.dll", "nebula_import.dll", "nebula-import.exe", @"dxc\dxc.exe", @"dxc\dxcompiler.dll", @"dxc\dxil.dll", @"dxc\LICENSE-MS.txt", @"dxc\LICENCE-MIT.txt", @"dxc\LICENSE-LLVM.txt", @"glslang\glslang.exe", @"glslang\LICENSE.txt", @"D3D12\D3D12Core.dll", @"D3D12\LICENSE.txt",
-            "NebulaLauncher.exe", "NebulaSettings.exe", "LICENSE", "THIRD-PARTY-NOTICES.md", "README.md"
-        };
+      
 
         /// <summary>The ray tracer's tables: installed when the package has them (the game runs without them).</summary>
         private static readonly string[] OptionalNativeFiles = { "material-names.tsv", "rt-materials.tsv", "rt-suns.tsv" };
@@ -223,14 +219,10 @@ namespace Nebula.Setup
                 imported = true;
             }
 
-            Stage(0.75, 0.15, NebulaText.Of("Installing Nebula {0}", BuildInfo.Version));
+            Stage(0.75, 0.15, NebulaText.Of("Installing Nebulatio {0}", BuildInfo.Version));
             string app = Path.Combine(staging, "app");
             Directory.CreateDirectory(app);
-            foreach (var name in NativeFiles) Payload.Extract(name, Path.Combine(app, name));
-            foreach (var name in OptionalNativeFiles)
-                if (Payload.Has(name)) Payload.Extract(name, Path.Combine(app, name));
-            Payload.ExtractZip(SelfDescription, Path.Combine(app, "luma"));
-            File.WriteAllText(Path.Combine(app, "runtime-isa.txt"), NativeIsa);
+   
             var files = new Dictionary<string, object>();
             foreach (var path in Directory.GetFiles(app, "*", SearchOption.AllDirectories))
                 files[path.Substring(app.Length).TrimStart(Path.DirectorySeparatorChar)] = FileUtil.Sha256File(path);
@@ -246,16 +238,8 @@ namespace Nebula.Setup
                 { "installedUtc", DateTime.UtcNow.ToString("o") },
                 { "files", files }
             });
-            foreach (var name in NativeFiles)
-                if (new FileInfo(Path.Combine(app, name)).Length == 0) throw new InvalidOperationException("The new version's " + name + " is empty.");
-
-            if (dlss != null && dlss.IsAlive)
-            {
-                Stage(0.90, 0.04, NebulaText.Of("Downloading NVIDIA DLSS"));
-                waitingForDlss = true;
-                while (!dlss.Join(200)) cancel.ThrowIfCancellationRequested();
-                waitingForDlss = false;
-            }
+         
+        
             Stage(0.94, 0.06, NebulaText.Of("Switching to the new version"));
             // The versions it replaces are removed: nothing may run from this install meanwhile.
             while (true)
