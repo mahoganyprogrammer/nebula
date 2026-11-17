@@ -4,10 +4,12 @@
 # A tag with "-beta." in it (v2.0.0-beta.1) makes Nebula-Beta-Setup.exe instead, which only betas update to; any tag
 # with a "-" part is published as a pre-release.
 # A pull request that changes how a release is built, and Run workflow, build the same Setup without publishing it.
+# Every push to a branch builds too (without publishing), so breakage shows up before a tag.
 name: Release
 
 on:
   push:
+    branches: ["**"]
     tags: ["v*"]
   pull_request:
     paths:
@@ -21,7 +23,7 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   # A release is never cancelled half published.
-  cancel-in-progress: ${{ github.event_name != 'push' }}
+  cancel-in-progress: ${{ github.event_name != 'push' || github.ref_type != 'tag' }}
 
 permissions:
   contents: read
@@ -44,15 +46,18 @@ jobs:
       - id: version
         env:
           REF_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = push ]; then
+          # Publish only for a version tag pushed by hand; branch pushes and PRs just build.
+          if [ "$EVENT_NAME" = push ] && [ "$REF_TYPE" = tag ]; then
             version=${REF_NAME#v}
             publish=true
           else
             version=0.0.0-test.$GITHUB_RUN_NUMBER
             publish=false
           fi
-          if ! printf '%s' "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+          if [ "$publish" = true ] && ! printf '%s' "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
             echo "::error::$REF_NAME is not a version tag (v1.2.3, or v1.2.3-beta.1)"
             exit 1
           fi
@@ -97,7 +102,11 @@ jobs:
       - name: Configure
         # A release build: cross-file optimization on (NEBULA_HOST_IPO's default). There is one build kind: tests
         # attach their hooks from outside (tools/release_check.ps1 checks no source names a build kind).
-        run: cmake -S . -B build/host -G Ninja -DCMAKE_BUILD_TYPE=Release
+        # No AVX2: the host target must run on machines without it.
+        run: >-
+          cmake -S . -B build/host -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_FLAGS="/D__AVX2__=0"
+          -DNEBULA_ENABLE_AVX2=OFF
       - name: Build
         # The program Setup ships, not the tests.
         run: cmake --build build/host --target NebulaNative
