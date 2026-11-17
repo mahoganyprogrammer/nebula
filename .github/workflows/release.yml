@@ -152,7 +152,7 @@ jobs:
 
   setup:
     name: Setup
-    needs: [version, host, game]
+    needs: [version]
     runs-on: windows-2025
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -165,10 +165,12 @@ jobs:
           save-if: false
       # Outside the tree, so that build-native-setup.ps1 records a clean commit.
       - uses: actions/download-artifact@v8
+        if: false
         with:
           name: release-host
           path: ${{ runner.temp }}/bin
       - uses: actions/download-artifact@v8
+        if: false
         with:
           name: release-game
           path: ${{ runner.temp }}/bin
@@ -183,7 +185,7 @@ jobs:
   publish:
     name: Publish
     needs: [version, setup]
-    if: false
+
     runs-on: ubuntu-24.04
     permissions:
       contents: write
