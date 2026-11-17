@@ -170,10 +170,12 @@ jobs:
           save-if: false
       # Outside the tree, so that build-native-setup.ps1 records a clean commit.
       - uses: actions/download-artifact@v8
+        if: false
         with:
           name: release-host
           path: ${{ runner.temp }}/bin
       - uses: actions/download-artifact@v8
+        if: false
         with:
           name: release-game
           path: ${{ runner.temp }}/bin
