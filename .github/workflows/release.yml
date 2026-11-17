@@ -132,6 +132,7 @@ jobs:
       - uses: actions/Checkout@v7
       # The built-in mods, packed in the lumalink submodule (cmake/nebula_builtin_mods.cmake).
       - name: Built-in mods
+        if: false
         run: git submodule update --init --depth 1 lumalink
       - name: Configure-time dependencies
         uses: actions/cache/restore@v6
