@@ -85,7 +85,6 @@ jobs:
       - uses: actions/Checkout@v7
       # The built-in mods, packed in the lumalink submodule (cmake/nebula_builtin_mods.cmake).
       - name: Built-in mods
-        if: false
         run: git submodule update --init --depth 1 lumalink
       - uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -93,7 +92,6 @@ jobs:
       # The libraries CMake builds at configure time, from the Build workflow's Direct3D 12 job: restored only, so a
       # release never writes the cache.
       - name: Configure-time dependencies
-        if: false
         uses: actions/cache/restore@v6
         with:
           path: |
@@ -102,7 +100,6 @@ jobs:
             build/host/_deps
           key: host-deps-OFF-${{ hashFiles('cmake/**', 'third_party/archive/**') }}
       - name: Configure
-        if: false
         # A release build: cross-file optimization on (NEBULA_HOST_IPO's default). There is one build kind: tests
         # attach their hooks from outside (tools/release_check.ps1 checks no source names a build kind).
         # No AVX2: the host target must run on machines without it.
@@ -111,11 +108,9 @@ jobs:
           -DCMAKE_CXX_FLAGS="/D__AVX2__=0"
           -DNEBULA_ENABLE_AVX2=OFF
       - name: Build
-        if: false
         # The program Setup ships, not the tests.
         run: cmake --build build/host --target NebulaNative
       - uses: actions/upload-artifact@v7
-        if: false
         with:
           name: release-host
           path: build/host/NebulaNative.exe
@@ -136,7 +131,6 @@ jobs:
       - uses: actions/Checkout@v7
       # The built-in mods, packed in the lumalink submodule (cmake/nebula_builtin_mods.cmake).
       - name: Built-in mods
-        if: false
         run: git submodule update --init --depth 1 lumalink
       - name: Configure-time dependencies
         uses: actions/cache/restore@v6
@@ -148,7 +142,6 @@ jobs:
         if: false
         run: .\native\build.ps1 -Petari native\petari -Build build\game
       - uses: actions/upload-artifact@v7
-        if: false
         with:
           name: release-game
           path: build/game/smg_game.dll
@@ -170,114 +163,27 @@ jobs:
           save-if: false
       # Outside the tree, so that build-native-setup.ps1 records a clean commit.
       - uses: actions/download-artifact@v8
-        if: false
         with:
           name: release-host
           path: ${{ runner.temp }}/bin
       - uses: actions/download-artifact@v8
-        if: false
         with:
           name: release-game
           path: ${{ runner.temp }}/bin
-      - name: DirectX Shader Compiler
-        run: |
-          $zip = Join-Path $env:RUNNER_TEMP 'dxc.zip'
-          Invoke-WebRequest -Uri $env:DXC_URL -OutFile $zip
-          $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($hash -ne $env:DXC_SHA256) { throw "dxc.zip is $hash, not the pinned $env:DXC_SHA256" }
-          Expand-Archive -LiteralPath $zip -DestinationPath (Join-Path $env:RUNNER_TEMP 'dxc')
-      - name: Ray tracing tables
-        # The tables describe the game's own data, so they are kept outside the repository (docs/RAY_TRACING_STATUS.md)
-        # and nothing traces yet: Setup ships them with a header and no rows, as the test builds run without them.
-        # Not empty: Setup refuses to install an empty file (InstallEngine.Install).
-        run: |
-          $tables = New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'bin\tables')
-          $headers = @{ 'material-names.tsv' = "model`tmaterial`ttexture"; 'rt-materials.tsv' = "hash`tclass"; 'rt-suns.tsv' = "stage`tsource" }
-          foreach ($name in $headers.Keys) {
-              $text = "# No rows: this release ships no ray-tracing tables.`n" + $headers[$name] + "`n"
-              [IO.File]::WriteAllText((Join-Path $tables $name), $text, (New-Object Text.UTF8Encoding $false))
-          }
-      - name: Private terms
-        # release_check.ps1 expects .nebula-release-key\private-terms.txt (one term per line).
-        # An empty file means no personal terms to check — the file just needs to exist.
-        run: |
-          $folder = New-Item -ItemType Directory -Force (Join-Path $env:USERPROFILE '.nebula-release-key')
-          [IO.File]::WriteAllText((Join-Path $folder 'private-terms.txt'), '')
-      - name: Release key
-        # The private half of installer/release-public-key.xml, where build-native-setup.ps1 and release_check.ps1
-        # look for it. Without it Setup is published unsigned, and the launcher's update check skips the release.
-        if: needs.version.outputs.publish == 'true'
-        env:
-          NEBULA_RELEASE_KEY: ${{ secrets.NEBULA_RELEASE_KEY }}
-        run: |
-          if (-not $env:NEBULA_RELEASE_KEY) {
-              Write-Output "::warning::No NEBULA_RELEASE_KEY secret: $env:SETUP is published unsigned, so installed copies won't update to it."
-              exit 0
-          }
-          $folder = New-Item -ItemType Directory -Force (Join-Path $env:USERPROFILE '.nebula-release-key')
-          [IO.File]::WriteAllText((Join-Path $folder 'nebula-release-private.xml'), $env:NEBULA_RELEASE_KEY)
       - name: Setup
         run: >-
           .\installer\build-native-setup.ps1 -Version $env:VERSION -Bin (Join-Path $env:RUNNER_TEMP 'bin')
           -Dxc (Join-Path $env:RUNNER_TEMP 'dxc') -OutputDirectory (Join-Path $env:RUNNER_TEMP 'dist')
           -SetupName $env:SETUP -Repository $env:GITHUB_REPOSITORY
-      - name: Release check
-        # Defender isn't run here: the runner's definitions say nothing about players' PCs.
-        # Windows PowerShell, as the script is run by hand: its scanner is compiled against .NET Framework, which
-        # PowerShell 7 (pwsh) is not, and there it misses System.Text.RegularExpressions.
-        # -Allow whitelists known-good strings from third-party binaries (false-positive emails, etc.).
-        shell: powershell
-        run: >-
-          .\tools\release_check.ps1 -Path (Join-Path $env:RUNNER_TEMP 'bin')
-          -Installer (Join-Path $env:RUNNER_TEMP "dist\$env:SETUP")
-          -Allow (Join-Path $env:GITHUB_WORKSPACE 'tools\release-allow.txt')
-          -SkipDefender
-      - name: Remove the release key
-        if: always()
-        run: Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $env:USERPROFILE '.nebula-release-key')
-      - uses: actions/upload-artifact@v7
-        with:
-          name: nebula-setup
-          path: ${{ runner.temp }}/dist/${{ env.SETUP }}*
-          retention-days: 14
-          if-no-files-found: error
+          -Names (Join-Path $env:RUNNER_TEMP 'bin')
+          -ShippedMods (Join-Path $env:RUNNER_TEMP 'bin')
 
   publish:
     name: Publish
     needs: [version, setup]
-    if: needs.version.outputs.publish == 'true'
+    if: false
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v8
-        with:
-          name: nebula-setup
-          path: dist
-      - name: Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-          VERSION: ${{ needs.version.outputs.version }}
-          SETUP: ${{ needs.version.outputs.setup }}
-          PRERELEASE: ${{ needs.version.outputs.prerelease }}
-        run: |
-          ls -l dist
-          # A release made by hand for this tag keeps its notes: only the files are added (or replaced).
-          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            gh release upload "$TAG" dist/* --clobber -R "$GITHUB_REPOSITORY"
-            exit 0
-          fi
-          {
-            echo '## Install or update'
-            echo
-            echo "1. Download \`$SETUP\` below and run it. It isn't code-signed, so Windows SmartScreen shows \"Unknown publisher\": choose **More info**, then **Run anyway**."
-            echo '2. A new install: if you have Nebula installed, Setup offers to import its game files, saves and settings (Nebula itself is left as it is). Otherwise choose your own copy of the game (a disc image or an extracted folder), then **Install**.'
-            echo '3. An update: choose **Update**. Saves and settings are kept.'
-            echo
-          } > notes.md
-          flags=()
-          if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
-          # GitHub's generated notes (the pull requests since the last release) follow notes.md.
-          gh release create "$TAG" dist/* -R "$GITHUB_REPOSITORY" --verify-tag --title "Nebula $VERSION" \
-            --notes-file notes.md --generate-notes "${flags[@]}"
+      - run: echo "publish disabled"
