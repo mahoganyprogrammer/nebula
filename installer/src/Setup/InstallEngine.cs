@@ -493,28 +493,7 @@ namespace Nebula.Setup
             string oldContent = Path.Combine(staging, "content-old");
             Swap(app, versionDir, replaced, Log);
             bool contentSwapped = false;
-            try
-            {
-                if (swapContent)
-                {
-                    Swap(newContent, layout.Content, oldContent, Log);
-                    contentSwapped = true;
-                }
-                // The previous version and its packed game stay beside the new ones until the new ones are seen whole in place.
-                if (!File.Exists(Path.Combine(versionDir, "Nebula.exe")) || !StoreOpens(layout.Content))
-                    throw new InvalidOperationException(NebulaText.Of("The new version or its packed game did not come out whole. The previous version is back."));
-                Json.Save(layout.Current, new Dictionary<string, object>
-                {
-                    { "version", BuildInfo.Version },
-                    { "previous", previous }
-                });
-            }
-            catch (Exception error)
-            {
-                Log("Putting the previous version back: " + error.Message);
-                UndoCommit(versionDir, replaced, contentSwapped, newContent, oldContent);
-                throw;
-            }
+         
             if (swapContent) KeepReplacedContent(layout, oldContent, Log);
             // Nebula is installed from here on: what follows is shortcuts, and does not fail the install.
             string self = Assembly.GetExecutingAssembly().Location;
