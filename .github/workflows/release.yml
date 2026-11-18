@@ -150,6 +150,29 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+
+  launcher:
+    name: Launcher
+    needs: [version]
+    runs-on: windows-2025
+    steps:
+      - uses: actions/Checkout@v7
+      - name: BuildInfo
+        shell: powershell
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: $installer = Join-Path $env:GITHUB_WORKSPACE 'installer'; $repo = $env:GITHUB_WORKSPACE; $commit = (& git -C $repo rev-parse HEAD).Trim(); $publicKey = (Get-Content -LiteralPath (Join-Path $installer 'release-public-key.xml') -Raw).Trim(); $storeVersion = [uint32](Get-Content -LiteralPath (Join-Path $repo 'runtime\include\galaxy\store_version.inc') -Raw).Trim(); $work = Join-Path $env:RUNNER_TEMP 'launcher-build'; New-Item -ItemType Directory -Force $work | Out-Null; $buildInfoPath = Join-Path $work 'BuildInfo.cs'; $text = 'namespace Nebula{' + [Environment]::NewLine + '    internal static class BuildInfo{' + [Environment]::NewLine + '        public const string Version = "' + $env:VERSION + '";' + [Environment]::NewLine + '        public const string Commit = "' + $commit + '";' + [Environment]::NewLine + '        public const string Repository = "' + $env:GITHUB_REPOSITORY + '";' + [Environment]::NewLine + '        public const string ReleasePublicKeyXml = "' + $publicKey.Replace('"','\"') + '";' + [Environment]::NewLine + '        public const uint StoreVersion = ' + $storeVersion + ';' + [Environment]::NewLine + '        public static readonly bool RayTracing = false;' + [Environment]::NewLine + '    }' + [Environment]::NewLine + '}'; [IO.File]::WriteAllText($buildInfoPath, $text, (New-Object Text.UTF8Encoding $false))
+      - name: Launcher
+        shell: powershell
+        run: $installer = Join-Path $env:GITHUB_WORKSPACE 'installer'; $repo = $env:GITHUB_WORKSPACE; $work = Join-Path $env:RUNNER_TEMP 'launcher-build'; $buildInfoPath = Join-Path $work 'BuildInfo.cs'; $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'; $common = @(Get-ChildItem (Join-Path $installer 'src\Common\*.cs') | ForEach-Object FullName) + $buildInfoPath; $textTable = '/resource:' + (Join-Path $repo 'localization\NebulaText.tsv') + ',NebulaText.tsv'; $references = @('/r:System.Web.Extensions.dll','/r:System.IO.Compression.dll','/r:System.IO.Compression.FileSystem.dll','/r:System.Windows.Forms.dll','/r:System.Drawing.dll','/r:System.Core.dll'); $manifestFile = Join-Path $installer 'app.manifest'; $iconFile = Join-Path $installer 'assets\nebula.ico'; $launcherSources = @(Get-ChildItem (Join-Path $installer 'src\Launcher\*.cs') | ForEach-Object FullName); $launcher = Join-Path $work 'NebulaLauncher.exe'; & $csc (@('/nologo','/target:winexe','/platform:x64','/optimize+',('/win32manifest:' + $manifestFile),('/win32icon:' + $iconFile),('/out:' + $launcher)) + $references + $textTable + $common + $launcherSources); if ($LASTEXITCODE -ne 0) { throw "csc (launcher) failed with exit code $LASTEXITCODE" }; $settingsApp = Join-Path $work 'NebulaSettings.exe'; & $csc (@('/nologo','/target:winexe','/platform:x64','/optimize+','/define:NEBULA_SETTINGS_APP',('/win32manifest:' + $manifestFile),('/win32icon:' + $iconFile),('/out:' + $settingsApp)) + $references + $textTable + $common + $launcherSources); if ($LASTEXITCODE -ne 0) { throw "csc (settings) failed with exit code $LASTEXITCODE" }; Get-ChildItem $work -Filter '*.exe' | Format-Table Name, Length
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-launcher
+          path: |
+            ${{ runner.temp }}/launcher-build/NebulaLauncher.exe
+            ${{ runner.temp }}/launcher-build/NebulaSettings.exe
+          retention-days: 1
+          if-no-files-found: error          
   setup:
     name: Setup
     needs: [version]
